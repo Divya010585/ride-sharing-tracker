@@ -13,25 +13,21 @@ const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: ['http://localhost:3000', 'https://ride-sharing-tracker.vercel.app'],
     methods: ['GET', 'POST']
   }
 });
 
-// Middleware
 app.use(cors({
   origin: ['http://localhost:3000', 'https://ride-sharing-tracker.vercel.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
-// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/trips', tripRoutes);
 
-// Socket.io
 socketHandler(io);
 
-// Test route
 app.get('/', (req, res) => {
   res.send('🚗 Ride Sharing Server is Running!');
 });
