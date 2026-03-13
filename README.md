@@ -148,4 +148,4 @@ npm start
 
 ## 👩‍💻 Developer
 
-Built by **Divya** — 3rd Year CS Student
+Built by **Divya** — 3rd Year CSE Student
