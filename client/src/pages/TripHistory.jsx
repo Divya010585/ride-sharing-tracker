@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
@@ -9,12 +9,7 @@ const TripHistory = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const res = await axios.get('https://ride-sharing-tracker-backend.onrender.com/api/trips/history', {
         headers: { authorization: token }
@@ -24,7 +19,11 @@ const TripHistory = () => {
       console.log('Error fetching history:', err);
     }
     setLoading(false);
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
