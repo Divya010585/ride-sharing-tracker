@@ -18,6 +18,7 @@ const io = socketio(server, {
   }
 });
 
+app.use(express.json());
 app.use(cors({
   origin: ['http://localhost:3000', 'https://ride-sharing-tracker.vercel.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE']
