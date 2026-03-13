@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+const API = 'https://ride-sharing-tracker-backend.onrender.com';
+
 const Register = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -13,7 +15,7 @@ const Register = () => {
   const handleRegister = async () => {
     setLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/register', {
+      await axios.post(`${API}/api/auth/register`, {
         name,
         email,
         password
@@ -21,7 +23,7 @@ const Register = () => {
       alert('✅ Registered successfully! Please login.');
       navigate('/');
     } catch (err) {
-      setError(err.response.data.message);
+      setError(err.response?.data?.message || 'Something went wrong!');
     }
     setLoading(false);
   };
