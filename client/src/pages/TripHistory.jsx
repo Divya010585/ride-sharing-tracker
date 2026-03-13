@@ -9,13 +9,14 @@ const TripHistory = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchHistory();
   }, []);
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/trips/history', {
+      const res = await axios.get('https://ride-sharing-tracker-backend.onrender.com/api/trips/history', {
         headers: { authorization: token }
       });
       setTrips(res.data.trips);
@@ -200,7 +201,7 @@ const styles = {
     borderRadius: '8px',
     fontSize: '14px',
     cursor: 'pointer',
-    alignSelf:'flex-start'
+    alignSelf: 'flex-start'
   }
 };
 

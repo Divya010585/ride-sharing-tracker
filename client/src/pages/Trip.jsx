@@ -13,7 +13,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-// Meeting point marker (red)
 const meetingIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
@@ -22,7 +21,6 @@ const meetingIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
-// Click handler to set meeting point
 const MapClickHandler = ({ onMapClick, settingMeetingPoint }) => {
   useMapEvents({
     click: (e) => {
@@ -109,7 +107,6 @@ const Trip = () => {
       }]);
     });
 
-    // Receive meeting point from others
     socket.on('receive-meeting-point', (data) => {
       setMeetingPoint({ lat: data.lat, lng: data.lng });
     });
@@ -122,9 +119,9 @@ const Trip = () => {
       socket.off('user-joined');
       socket.off('receive-meeting-point');
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isGhost]);
 
-  // Calculate ETA when location or meeting point changes
   useEffect(() => {
     if (myLocation && meetingPoint) {
       const distanceInMeters = getDistance(
@@ -132,7 +129,6 @@ const Trip = () => {
         { latitude: meetingPoint.lat, longitude: meetingPoint.lng }
       );
       const distanceInKm = (distanceInMeters / 1000).toFixed(2);
-      // Average speed 40km/h
       const timeInMinutes = Math.ceil((distanceInKm / 40) * 60);
       setMyETA({ distance: distanceInKm, minutes: timeInMinutes });
     }
@@ -149,7 +145,6 @@ const Trip = () => {
   const handleMapClick = (latlng) => {
     setMeetingPoint({ lat: latlng.lat, lng: latlng.lng });
     setSettingMeetingPoint(false);
-    // Broadcast meeting point to all users
     socket.emit('set-meeting-point', {
       roomId: roomCode,
       lat: latlng.lat,
@@ -182,7 +177,6 @@ const Trip = () => {
 
   return (
     <div style={styles.container}>
-      {/* Header */}
       <div style={styles.header}>
         <h2 style={styles.title}>🚗 Live Trip</h2>
         <div style={styles.info}>
@@ -223,16 +217,13 @@ const Trip = () => {
         </div>
       </div>
 
-      {/* ETA Banner */}
       {myETA && (
         <div style={styles.etaBanner}>
           📍 Meeting Point Set · 🚗 {myETA.distance} km away · ⏱️ ETA: {myETA.minutes} min
         </div>
       )}
 
-      {/* Main Content */}
       <div style={styles.mainContent}>
-        {/* Map */}
         <div style={{ flex: 1 }}>
           {myLocation ? (
             <MapContainer
@@ -275,7 +266,6 @@ const Trip = () => {
           )}
         </div>
 
-        {/* Chat Sidebar */}
         {showChat && (
           <div style={styles.chatSidebar}>
             <div style={styles.chatHeader}>
