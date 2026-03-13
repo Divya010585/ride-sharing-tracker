@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 
+const API = 'https://ride-sharing-tracker-backend.onrender.com';
+
 const Dashboard = () => {
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
@@ -14,7 +16,7 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const res = await axios.post(
-        'http://localhost:5000/api/trips/create',
+        `${API}/api/trips/create`,
         {},
         { headers: { authorization: token } }
       );
@@ -33,7 +35,7 @@ const Dashboard = () => {
     setLoading(true);
     try {
       await axios.post(
-        'http://localhost:5000/api/trips/join',
+        `${API}/api/trips/join`,
         { roomCode },
         { headers: { authorization: token } }
       );
