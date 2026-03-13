@@ -50,6 +50,7 @@ const Trip = () => {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    socket.connect();
     socket.emit('join-room', {
       roomId: roomCode,
       userName: user?.name
@@ -118,6 +119,7 @@ const Trip = () => {
       socket.off('receive-message');
       socket.off('user-joined');
       socket.off('receive-meeting-point');
+      socket.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isGhost]);
@@ -163,7 +165,10 @@ const Trip = () => {
     setNewMessage('');
   };
 
-  const handleLeave = () => navigate('/dashboard');
+  const handleLeave = () => {
+    socket.disconnect();
+    navigate('/dashboard');
+  };
 
   const handleGhostMode = () => {
     setIsGhost(!isGhost);

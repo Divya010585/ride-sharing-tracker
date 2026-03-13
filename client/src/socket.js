@@ -5,6 +5,7 @@ const socket = io('https://ride-sharing-tracker-backend.onrender.com', {
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
+  autoConnect: false,
 });
 
 export default socket;
