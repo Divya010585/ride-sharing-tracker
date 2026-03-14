@@ -112,6 +112,19 @@ const Trip = () => {
       setMeetingPoint({ lat: data.lat, lng: data.lng });
     });
 
+    socket.on('request-location-update', () => {
+      navigator.geolocation.getCurrentPosition((position) => {
+        const { latitude, longitude } = position.coords;
+        if (!isGhost) {
+          socket.emit('send-location', {
+            roomId: roomCode,
+            lat: latitude,
+            lng: longitude
+          });
+        }
+      });
+    });
+
     return () => {
       navigator.geolocation.clearWatch(watchId);
       socket.off('receive-location');
@@ -119,6 +132,7 @@ const Trip = () => {
       socket.off('receive-message');
       socket.off('user-joined');
       socket.off('receive-meeting-point');
+      socket.off('request-location-update');
       socket.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

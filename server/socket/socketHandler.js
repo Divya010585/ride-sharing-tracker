@@ -11,6 +11,9 @@ module.exports = (io) => {
       socket.to(data.roomId).emit('user-joined', {
         message: `${data.userName} joined the trip! 🚗`
       });
+
+      // Ask all users to re-send their location
+      io.to(data.roomId).emit('request-location-update');
     });
 
     // Handle live location
