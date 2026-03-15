@@ -13,9 +13,40 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const validateEmail = (email) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
+  const validatePassword = (password) => {
+    const errors = [];
+    if (password.length < 8) errors.push('At least 8 characters');
+    if (!/[A-Z]/.test(password)) errors.push('At least 1 uppercase letter');
+    if (!/[0-9]/.test(password)) errors.push('At least 1 number');
+    if (!/[!@#$%^&*]/.test(password)) errors.push('At least 1 special character (!@#$%^&*)');
+    return errors;
+  };
+
   const handleRegister = async () => {
-    setLoading(true);
     setError('');
+
+    if (!name.trim()) {
+      setError('Please enter your name!');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address!');
+      return;
+    }
+
+    const passwordErrors = validatePassword(password);
+    if (passwordErrors.length > 0) {
+      setError('Password must have: ' + passwordErrors.join(', '));
+      return;
+    }
+
+    setLoading(true);
     try {
       const res = await axios.post(`${API}/api/auth/register`, {
         name,
@@ -60,17 +91,33 @@ const Register = () => {
             <input
               style={styles.input}
               type="email"
-              placeholder="Email Address"
+              placeholder="Email Address (e.g. name@gmail.com)"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
             <input
               style={styles.input}
               type="password"
-              placeholder="Password"
+              placeholder="Password (min 8 chars, 1 uppercase, 1 number, 1 special)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+
+            <div style={styles.passwordRules}>
+              <p style={password.length >= 8 ? styles.rulePass : styles.ruleFail}>
+                {password.length >= 8 ? '✅' : '❌'} At least 8 characters
+              </p>
+              <p style={/[A-Z]/.test(password) ? styles.rulePass : styles.ruleFail}>
+                {/[A-Z]/.test(password) ? '✅' : '❌'} At least 1 uppercase letter
+              </p>
+              <p style={/[0-9]/.test(password) ? styles.rulePass : styles.ruleFail}>
+                {/[0-9]/.test(password) ? '✅' : '❌'} At least 1 number
+              </p>
+              <p style={/[!@#$%^&*]/.test(password) ? styles.rulePass : styles.ruleFail}>
+                {/[!@#$%^&*]/.test(password) ? '✅' : '❌'} At least 1 special character (!@#$%^&*)
+              </p>
+            </div>
+
             <button
               style={loading ? styles.buttonLoading : styles.button}
               onClick={handleRegister}
@@ -97,7 +144,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    height: '100vh',
+    minHeight: '100vh',
     backgroundColor: '#1a1a2e'
   },
   box: {
@@ -136,6 +183,24 @@ const styles = {
     color: 'white',
     fontSize: '14px',
     outline: 'none'
+  },
+  passwordRules: {
+    backgroundColor: '#0f3460',
+    padding: '10px',
+    borderRadius: '8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px'
+  },
+  rulePass: {
+    color: '#69f0ae',
+    fontSize: '12px',
+    margin: 0
+  },
+  ruleFail: {
+    color: '#888',
+    fontSize: '12px',
+    margin: 0
   },
   button: {
     padding: '14px',
