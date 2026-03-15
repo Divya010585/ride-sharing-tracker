@@ -26,7 +26,7 @@ const register = (req, res) => {
     const hashedPassword = bcrypt.hashSync(password, 10);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    db.query('INSERT INTO users (name, email, password, verification_token, is_verified) VALUES (?, ?, ?, ?, 0)',
+    db.query('INSERT INTO users (name, email, password, verification_token, is_verified) VALUES (?, ?, ?, ?, 1)',
       [name, email, hashedPassword, verificationToken],
       (err, result) => {
         if (err) return res.status(500).json({ message: 'Database error' });
