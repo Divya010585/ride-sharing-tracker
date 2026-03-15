@@ -9,19 +9,20 @@ const Register = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleRegister = async () => {
     setLoading(true);
+    setError('');
     try {
-      await axios.post(`${API}/api/auth/register`, {
+      const res = await axios.post(`${API}/api/auth/register`, {
         name,
         email,
         password
       });
-      alert('✅ Registered successfully! Please login.');
-      navigate('/');
+      setSuccess(res.data.message);
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong!');
     }
@@ -39,41 +40,53 @@ const Register = () => {
 
         {error && <p style={styles.error}>⚠️ {error}</p>}
 
-        <input
-          style={styles.input}
-          type="text"
-          placeholder="Full Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          style={styles.input}
-          type="email"
-          placeholder="Email Address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          style={styles.input}
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button
-          style={loading ? styles.buttonLoading : styles.button}
-          onClick={handleRegister}
-          disabled={loading}
-        >
-          {loading ? 'Creating Account...' : 'Create Account →'}
-        </button>
+        {success ? (
+          <div style={styles.successBox}>
+            <p style={styles.successText}>📧 {success}</p>
+            <p style={styles.successSubtext}>Check your email inbox and click the verify link!</p>
+            <button style={styles.button} onClick={() => navigate('/')}>
+              Go to Login →
+            </button>
+          </div>
+        ) : (
+          <>
+            <input
+              style={styles.input}
+              type="text"
+              placeholder="Full Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <input
+              style={styles.input}
+              type="email"
+              placeholder="Email Address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              style={styles.input}
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              style={loading ? styles.buttonLoading : styles.button}
+              onClick={handleRegister}
+              disabled={loading}
+            >
+              {loading ? 'Creating Account...' : 'Create Account →'}
+            </button>
 
-        <p style={styles.link}>
-          Already have an account?{' '}
-          <span style={styles.linkText} onClick={() => navigate('/')}>
-            Login
-          </span>
-        </p>
+            <p style={styles.link}>
+              Already have an account?{' '}
+              <span style={styles.linkText} onClick={() => navigate('/')}>
+                Login
+              </span>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -147,6 +160,23 @@ const styles = {
   error: {
     color: '#e94560',
     textAlign: 'center',
+    fontSize: '14px',
+    margin: 0
+  },
+  successBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    alignItems: 'center',
+    textAlign: 'center'
+  },
+  successText: {
+    color: '#69f0ae',
+    fontSize: '16px',
+    margin: 0
+  },
+  successSubtext: {
+    color: '#888',
     fontSize: '14px',
     margin: 0
   },

@@ -1,5 +1,8 @@
 {
   "scripts": {
     "build": "cd client && react-scripts build"
+  },
+  "dependencies": {
+    "nodemailer": "^8.0.2"
   }
 }
