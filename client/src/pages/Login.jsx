@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,10 +8,35 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === 'true') {
+      setSuccess('✅ Email verified successfully! Please login.');
+    }
+  }, []);
+
+  const validateEmail = (email) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
   const handleLogin = async () => {
+    setError('');
+
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address!');
+      return;
+    }
+
+    if (!password) {
+      setError('Please enter your password!');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await axios.post(`${API}/api/auth/login`, {
@@ -37,6 +62,7 @@ const Login = () => {
         </div>
 
         {error && <p style={styles.error}>⚠️ {error}</p>}
+        {success && <p style={styles.successMsg}>✅ {success}</p>}
 
         <input
           style={styles.input}
@@ -138,6 +164,12 @@ const styles = {
   },
   error: {
     color: '#e94560',
+    textAlign: 'center',
+    fontSize: '14px',
+    margin: 0
+  },
+  successMsg: {
+    color: '#69f0ae',
     textAlign: 'center',
     fontSize: '14px',
     margin: 0
