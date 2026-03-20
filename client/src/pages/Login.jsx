@@ -7,6 +7,7 @@ const API = 'https://ride-sharing-tracker-backend.onrender.com';
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,17 +27,14 @@ const Login = () => {
 
   const handleLogin = async () => {
     setError('');
-
     if (!validateEmail(email)) {
       setError('Please enter a valid email address!');
       return;
     }
-
     if (!password) {
       setError('Please enter your password!');
       return;
     }
-
     setLoading(true);
     try {
       const res = await axios.post(`${API}/api/auth/login`, {
@@ -71,13 +69,23 @@ const Login = () => {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <input
-          style={styles.input}
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+
+        <div style={styles.passwordWrapper}>
+          <input
+            style={styles.passwordInput}
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <span
+            style={styles.eyeIcon}
+            onClick={() => setShowPassword(!showPassword)}
+          >
+            {showPassword ? '🙈' : '👁️'}
+          </span>
+        </div>
+
         <button
           style={loading ? styles.buttonLoading : styles.button}
           onClick={handleLogin}
@@ -141,6 +149,27 @@ const styles = {
     color: 'white',
     fontSize: '14px',
     outline: 'none'
+  },
+  passwordWrapper: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center'
+  },
+  passwordInput: {
+    padding: '14px',
+    borderRadius: '8px',
+    border: '1px solid #0f3460',
+    backgroundColor: '#0f3460',
+    color: 'white',
+    fontSize: '14px',
+    outline: 'none',
+    width: '100%'
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: '12px',
+    cursor: 'pointer',
+    fontSize: '18px'
   },
   button: {
     padding: '14px',
