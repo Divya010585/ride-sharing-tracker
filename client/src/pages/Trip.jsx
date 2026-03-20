@@ -13,14 +13,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-const meetingIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+const colors = ['blue', 'red', 'green', 'orange', 'yellow', 'violet', 'grey', 'black'];
+
+const getColorIcon = (color) => new L.Icon({
+  iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
 });
 
+const meetingIcon = getColorIcon('red');
 const sosIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
@@ -32,9 +35,7 @@ const sosIcon = new L.Icon({
 const MapClickHandler = ({ onMapClick, settingMeetingPoint }) => {
   useMapEvents({
     click: (e) => {
-      if (settingMeetingPoint) {
-        onMapClick(e.latlng);
-      }
+      if (settingMeetingPoint) onMapClick(e.latlng);
     }
   });
   return null;
@@ -58,10 +59,25 @@ const Trip = () => {
   const [sosAlert, setSosAlert] = useState(null);
   const [sosLocation, setSosLocation] = useState(null);
   const [tripCreator, setTripCreator] = useState(false);
+  const [weather, setWeather] = useState(null);
+  const [showSosCountdown, setShowSosCountdown] = useState(false);
+  const [sosCountdown, setSosCountdown] = useState(30);
+  const [allETAs, setAllETAs] = useState({});
+  const lastMovementRef = useRef(Date.now());
+  const countdownRef = useRef(null);
+  const colorMapRef = useRef({});
+  const colorIndexRef = useRef(0);
   const messagesEndRef = useRef(null);
 
+  const getUserColor = (id) => {
+    if (!colorMapRef.current[id]) {
+      colorMapRef.current[id] = colors[colorIndexRef.current % colors.length];
+      colorIndexRef.current++;
+    }
+    return colorMapRef.current[id];
+  };
+
   useEffect(() => {
-    // Check if user is trip creator
     const token = localStorage.getItem('token');
     fetch(`https://ride-sharing-tracker-backend.onrender.com/api/trips/${roomCode}`, {
       headers: { authorization: token }
@@ -75,20 +91,19 @@ const Trip = () => {
       .catch(err => console.log(err));
 
     socket.connect();
-    socket.emit('join-room', {
-      roomId: roomCode,
-      userName: user?.name
-    });
+    socket.emit('join-room', { roomId: roomCode, userName: user?.name });
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         setMyLocation({ lat: latitude, lng: longitude });
+        lastMovementRef.current = Date.now();
         if (!isGhost) {
           socket.emit('send-location', {
             roomId: roomCode,
             lat: latitude,
-            lng: longitude
+            lng: longitude,
+            userName: user?.name
           });
         }
       },
@@ -98,7 +113,7 @@ const Trip = () => {
 
     socket.on('receive-location', (data) => {
       setOtherUsers((prev) => {
-        const updated = { ...prev, [data.id]: { lat: data.lat, lng: data.lng } };
+        const updated = { ...prev, [data.id]: { lat: data.lat, lng: data.lng, userName: data.userName } };
         setParticipantCount(Object.keys(updated).length + 1);
         return updated;
       });
@@ -119,23 +134,11 @@ const Trip = () => {
     });
 
     socket.on('user-joined', (data) => {
-      setMessages((prev) => [...prev, {
-        id: 'system',
-        userName: 'System',
-        message: data.message,
-        time: new Date().toLocaleTimeString(),
-        isSystem: true
-      }]);
+      setMessages((prev) => [...prev, { id: 'system', userName: 'System', message: data.message, time: new Date().toLocaleTimeString(), isSystem: true }]);
     });
 
     socket.on('user-left', (data) => {
-      setMessages((prev) => [...prev, {
-        id: 'system',
-        userName: 'System',
-        message: data.message,
-        time: new Date().toLocaleTimeString(),
-        isSystem: true
-      }]);
+      setMessages((prev) => [...prev, { id: 'system', userName: 'System', message: data.message, time: new Date().toLocaleTimeString(), isSystem: true }]);
     });
 
     socket.on('receive-meeting-point', (data) => {
@@ -143,22 +146,13 @@ const Trip = () => {
     });
 
     socket.on('meeting-point-alert', (data) => {
-      setMessages((prev) => [...prev, {
-        id: 'system',
-        userName: 'System',
-        message: data.message,
-        time: new Date().toLocaleTimeString(),
-        isSystem: true
-      }]);
+      setMessages((prev) => [...prev, { id: 'system', userName: 'System', message: data.message, time: new Date().toLocaleTimeString(), isSystem: true }]);
     });
 
     socket.on('receive-sos', (data) => {
       setSosAlert(data.message);
       setSosLocation({ lat: data.lat, lng: data.lng });
-      setTimeout(() => {
-        setSosAlert(null);
-        setSosLocation(null);
-      }, 10000);
+      setTimeout(() => { setSosAlert(null); setSosLocation(null); }, 10000);
     });
 
     socket.on('trip-ended', (data) => {
@@ -171,11 +165,7 @@ const Trip = () => {
       navigator.geolocation.getCurrentPosition((position) => {
         const { latitude, longitude } = position.coords;
         if (!isGhost) {
-          socket.emit('send-location', {
-            roomId: roomCode,
-            lat: latitude,
-            lng: longitude
-          });
+          socket.emit('send-location', { roomId: roomCode, lat: latitude, lng: longitude, userName: user?.name });
         }
       });
     });
@@ -197,17 +187,75 @@ const Trip = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isGhost]);
 
+  // Auto SOS - check movement every 30 seconds
   useEffect(() => {
-    if (myLocation && meetingPoint) {
-      const distanceInMeters = getDistance(
-        { latitude: myLocation.lat, longitude: myLocation.lng },
-        { latitude: meetingPoint.lat, longitude: meetingPoint.lng }
-      );
-      const distanceInKm = (distanceInMeters / 1000).toFixed(2);
-      const timeInMinutes = Math.ceil((distanceInKm / 40) * 60);
-      setMyETA({ distance: distanceInKm, minutes: timeInMinutes });
+    const movementInterval = setInterval(() => {
+      const timeSinceMovement = Date.now() - lastMovementRef.current;
+      if (timeSinceMovement > 300000 && !showSosCountdown) {
+        setShowSosCountdown(true);
+        setSosCountdown(30);
+      }
+    }, 30000);
+    return () => clearInterval(movementInterval);
+  }, [showSosCountdown]);
+
+  // SOS countdown timer
+  useEffect(() => {
+    if (showSosCountdown) {
+      countdownRef.current = setInterval(() => {
+        setSosCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current);
+            setShowSosCountdown(false);
+            if (myLocation) {
+              socket.emit('send-sos', { roomId: roomCode, userName: user?.name, lat: myLocation.lat, lng: myLocation.lng });
+            }
+            return 30;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     }
-  }, [myLocation, meetingPoint]);
+    return () => clearInterval(countdownRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSosCountdown]);
+
+  // Calculate ETA for all members
+  useEffect(() => {
+    if (meetingPoint) {
+      const etas = {};
+      if (myLocation) {
+        const dist = getDistance(
+          { latitude: myLocation.lat, longitude: myLocation.lng },
+          { latitude: meetingPoint.lat, longitude: meetingPoint.lng }
+        );
+        const km = (dist / 1000).toFixed(2);
+        const mins = Math.ceil((km / 40) * 60);
+        etas['me'] = { userName: user?.name, distance: km, minutes: mins };
+        setMyETA({ distance: km, minutes: mins });
+      }
+      Object.entries(otherUsers).forEach(([id, loc]) => {
+        const dist = getDistance(
+          { latitude: loc.lat, longitude: loc.lng },
+          { latitude: meetingPoint.lat, longitude: meetingPoint.lng }
+        );
+        const km = (dist / 1000).toFixed(2);
+        const mins = Math.ceil((km / 40) * 60);
+        etas[id] = { userName: loc.userName || 'Member', distance: km, minutes: mins };
+      });
+      setAllETAs(etas);
+    }
+  }, [myLocation, otherUsers, meetingPoint]);
+
+  // Fetch weather at meeting point
+  useEffect(() => {
+    if (meetingPoint) {
+      fetch(`https://wttr.in/${meetingPoint.lat},${meetingPoint.lng}?format=3`)
+        .then(res => res.text())
+        .then(data => setWeather(data))
+        .catch(() => setWeather(null));
+    }
+  }, [meetingPoint]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -220,34 +268,20 @@ const Trip = () => {
   const handleMapClick = (latlng) => {
     setMeetingPoint({ lat: latlng.lat, lng: latlng.lng });
     setSettingMeetingPoint(false);
-    socket.emit('set-meeting-point', {
-      roomId: roomCode,
-      lat: latlng.lat,
-      lng: latlng.lng,
-      userName: user?.name
-    });
+    socket.emit('set-meeting-point', { roomId: roomCode, lat: latlng.lat, lng: latlng.lng, userName: user?.name });
     alert('📍 Meeting point set! All users can see it!');
   };
 
   const handleSendMessage = () => {
     if (!newMessage.trim()) return;
-    socket.emit('send-message', {
-      roomId: roomCode,
-      userName: user?.name,
-      message: newMessage
-    });
+    socket.emit('send-message', { roomId: roomCode, userName: user?.name, message: newMessage });
     setNewMessage('');
   };
 
   const handleSOS = () => {
     if (myLocation) {
       if (window.confirm('🆘 Send SOS alert to all trip members?')) {
-        socket.emit('send-sos', {
-          roomId: roomCode,
-          userName: user?.name,
-          lat: myLocation.lat,
-          lng: myLocation.lng
-        });
+        socket.emit('send-sos', { roomId: roomCode, userName: user?.name, lat: myLocation.lat, lng: myLocation.lng });
       }
     } else {
       alert('❌ Location not available yet!');
@@ -256,27 +290,13 @@ const Trip = () => {
 
   const handleEndTrip = () => {
     if (window.confirm('🏁 Are you sure you want to end the trip for everyone?')) {
-      socket.emit('end-trip', {
-        roomId: roomCode,
-        userName: user?.name
-      });
+      socket.emit('end-trip', { roomId: roomCode, userName: user?.name });
     }
   };
 
-  const handleLeave = () => {
-    socket.disconnect();
-    navigate('/dashboard');
-  };
-
-  const handleGhostMode = () => {
-    setIsGhost(!isGhost);
-    alert(isGhost ? '👁️ Ghost mode OFF!' : '👻 Ghost mode ON!');
-  };
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(roomCode);
-    alert('✅ Room code copied!');
-  };
+  const handleLeave = () => { socket.disconnect(); navigate('/dashboard'); };
+  const handleGhostMode = () => { setIsGhost(!isGhost); alert(isGhost ? '👁️ Ghost mode OFF!' : '👻 Ghost mode ON!'); };
+  const handleCopyCode = () => { navigator.clipboard.writeText(roomCode); alert('✅ Room code copied!'); };
 
   return (
     <div style={styles.container}>
@@ -285,55 +305,58 @@ const Trip = () => {
         <div style={styles.info}>
           <p style={styles.roomCode}>
             Room Code: <strong>{roomCode}</strong>
-            <button style={styles.copyButton} onClick={handleCopyCode}>
-              📋 Copy
-            </button>
+            <button style={styles.copyButton} onClick={handleCopyCode}>📋 Copy</button>
           </p>
-          <p style={styles.status}>
-            🟢 Connected · 👥 {participantCount} participant(s)
-          </p>
+          <p style={styles.status}>🟢 Connected · 👥 {participantCount} participant(s)</p>
         </div>
         <div style={styles.buttons}>
-          <button
-            style={settingMeetingPoint ? styles.etaButtonOn : styles.etaButtonOff}
-            onClick={() => setSettingMeetingPoint(!settingMeetingPoint)}
-          >
+          <button style={settingMeetingPoint ? styles.etaButtonOn : styles.etaButtonOff} onClick={() => setSettingMeetingPoint(!settingMeetingPoint)}>
             {settingMeetingPoint ? '📍 Click map...' : '📍 Set Meeting Point'}
           </button>
-          <button
-            style={isGhost ? styles.ghostButtonOn : styles.ghostButtonOff}
-            onClick={handleGhostMode}
-          >
+          <button style={isGhost ? styles.ghostButtonOn : styles.ghostButtonOff} onClick={handleGhostMode}>
             {isGhost ? '👻 Ghost ON' : '👁️ Ghost OFF'}
           </button>
           <button style={styles.chatButton} onClick={() => setShowChat(!showChat)}>
-            💬 Chat {unreadCount > 0 && !showChat && (
-              <span style={styles.badge}>{unreadCount}</span>
-            )}
+            💬 Chat {unreadCount > 0 && !showChat && <span style={styles.badge}>{unreadCount}</span>}
           </button>
-          <button style={styles.sosButton} onClick={handleSOS}>
-            🆘 SOS
-          </button>
-          {tripCreator && (
-            <button style={styles.endTripButton} onClick={handleEndTrip}>
-              🏁 End Trip
-            </button>
-          )}
-          <button style={styles.leaveButton} onClick={handleLeave}>
-            🚪 Leave
-          </button>
+          <button style={styles.sosButton} onClick={handleSOS}>🆘 SOS</button>
+          {tripCreator && <button style={styles.endTripButton} onClick={handleEndTrip}>🏁 End Trip</button>}
+          <button style={styles.leaveButton} onClick={handleLeave}>🚪 Leave</button>
         </div>
       </div>
 
-      {sosAlert && (
-        <div style={styles.sosBanner}>
-          🆘 {sosAlert}
+      {sosAlert && <div style={styles.sosBanner}>🆘 {sosAlert}</div>}
+
+      {showSosCountdown && (
+        <div style={styles.sosCountdownBanner}>
+          <p style={styles.sosCountdownText}>⚠️ No movement detected! Are you okay?</p>
+          <p style={styles.sosCountdownNumber}>{sosCountdown}</p>
+          <button style={styles.imOkButton} onClick={() => {
+            setShowSosCountdown(false);
+            lastMovementRef.current = Date.now();
+            clearInterval(countdownRef.current);
+          }}>✅ I'm OK!</button>
         </div>
       )}
 
       {myETA && (
         <div style={styles.etaBanner}>
           📍 Meeting Point Set · 🚗 {myETA.distance} km away · ⏱️ ETA: {myETA.minutes} min
+          {weather && <span style={styles.weatherText}> · 🌤️ {weather}</span>}
+        </div>
+      )}
+
+      {/* All ETAs Panel */}
+      {Object.keys(allETAs).length > 0 && (
+        <div style={styles.etaPanel}>
+          <p style={styles.etaPanelTitle}>⏱️ All Members ETA:</p>
+          <div style={styles.etaList}>
+            {Object.entries(allETAs).map(([id, eta]) => (
+              <span key={id} style={styles.etaItem}>
+                👤 {eta.userName}: {eta.distance}km · {eta.minutes}min
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -343,24 +366,21 @@ const Trip = () => {
             <MapContainer
               center={[myLocation.lat, myLocation.lng]}
               zoom={15}
-              style={{ height: myETA ? 'calc(100vh - 120px)' : 'calc(100vh - 80px)', width: '100%' }}
+              style={{ height: 'calc(100vh - 160px)', width: '100%' }}
             >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="© OpenStreetMap contributors"
-              />
-              <MapClickHandler
-                onMapClick={handleMapClick}
-                settingMeetingPoint={settingMeetingPoint}
-              />
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" />
+              <MapClickHandler onMapClick={handleMapClick} settingMeetingPoint={settingMeetingPoint} />
               {!isGhost && (
-                <Marker position={[myLocation.lat, myLocation.lng]}>
+                <Marker position={[myLocation.lat, myLocation.lng]} icon={getColorIcon('blue')}>
                   <Popup>📍 You ({user?.name})</Popup>
                 </Marker>
               )}
               {Object.entries(otherUsers).map(([id, location]) => (
-                <Marker key={id} position={[location.lat, location.lng]}>
-                  <Popup>👤 Another User</Popup>
+                <Marker key={id} position={[location.lat, location.lng]} icon={getColorIcon(getUserColor(id))}>
+                  <Popup>
+                    👤 {location.userName || 'Member'}
+                    {allETAs[id] && <><br/>📍 {allETAs[id].distance} km<br/>⏱️ ETA: {allETAs[id].minutes} min</>}
+                  </Popup>
                 </Marker>
               ))}
               {meetingPoint && (
@@ -389,18 +409,9 @@ const Trip = () => {
               <button style={styles.closeChat} onClick={() => setShowChat(false)}>✕</button>
             </div>
             <div style={styles.messagesContainer}>
-              {messages.length === 0 && (
-                <p style={styles.noMessages}>No messages yet — say hi! 👋</p>
-              )}
+              {messages.length === 0 && <p style={styles.noMessages}>No messages yet — say hi! 👋</p>}
               {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  style={
-                    msg.isSystem ? styles.systemMessage
-                    : msg.id === socket.id ? styles.myMessage
-                    : styles.otherMessage
-                  }
-                >
+                <div key={index} style={msg.isSystem ? styles.systemMessage : msg.id === socket.id ? styles.myMessage : styles.otherMessage}>
                   {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
                   <p style={styles.messageText}>{msg.message}</p>
                   <p style={styles.messageTime}>{msg.time}</p>
@@ -445,7 +456,16 @@ const styles = {
   endTripButton: { padding: '8px 16px', backgroundColor: '#ff6600', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' },
   leaveButton: { padding: '8px 16px', backgroundColor: '#e94560', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
   sosBanner: { backgroundColor: '#ff0000', color: 'white', padding: '12px 20px', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' },
+  sosCountdownBanner: { backgroundColor: '#ff6600', color: 'white', padding: '15px 20px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' },
+  sosCountdownText: { margin: 0, fontSize: '16px', fontWeight: 'bold' },
+  sosCountdownNumber: { margin: 0, fontSize: '28px', fontWeight: 'bold', color: 'white' },
+  imOkButton: { padding: '10px 20px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', fontWeight: 'bold' },
   etaBanner: { backgroundColor: '#ff9800', color: 'white', padding: '8px 20px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold' },
+  weatherText: { fontSize: '12px', opacity: 0.9 },
+  etaPanel: { backgroundColor: '#16213e', padding: '8px 20px', borderBottom: '1px solid #0f3460' },
+  etaPanelTitle: { color: '#888', margin: '0 0 5px 0', fontSize: '12px' },
+  etaList: { display: 'flex', gap: '15px', flexWrap: 'wrap' },
+  etaItem: { color: 'white', fontSize: '12px', backgroundColor: '#0f3460', padding: '4px 10px', borderRadius: '20px' },
   mainContent: { display: 'flex', flex: 1, overflow: 'hidden' },
   loading: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e', height: 'calc(100vh - 80px)' },
   loadingText: { fontSize: '24px', color: 'white' },
