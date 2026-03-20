@@ -261,7 +261,7 @@ const Trip = () => {
         etas[id] = { userName: loc.userName || 'Member', distance: km, minutes: mins };
       });
       setAllETAs(etas);
-    }
+    }  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myLocation, otherUsers, meetingPoint]);
 
   // Weather
