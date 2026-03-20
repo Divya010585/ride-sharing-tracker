@@ -21,6 +21,14 @@ const meetingIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
+const sosIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [35, 57],
+  iconAnchor: [17, 57],
+  popupAnchor: [1, -34],
+});
+
 const MapClickHandler = ({ onMapClick, settingMeetingPoint }) => {
   useMapEvents({
     click: (e) => {
@@ -47,6 +55,8 @@ const Trip = () => {
   const [meetingPoint, setMeetingPoint] = useState(null);
   const [settingMeetingPoint, setSettingMeetingPoint] = useState(false);
   const [myETA, setMyETA] = useState(null);
+  const [sosAlert, setSosAlert] = useState(null);
+  const [sosLocation, setSosLocation] = useState(null);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -108,8 +118,37 @@ const Trip = () => {
       }]);
     });
 
+    socket.on('user-left', (data) => {
+      setMessages((prev) => [...prev, {
+        id: 'system',
+        userName: 'System',
+        message: data.message,
+        time: new Date().toLocaleTimeString(),
+        isSystem: true
+      }]);
+    });
+
     socket.on('receive-meeting-point', (data) => {
       setMeetingPoint({ lat: data.lat, lng: data.lng });
+    });
+
+    socket.on('meeting-point-alert', (data) => {
+      setMessages((prev) => [...prev, {
+        id: 'system',
+        userName: 'System',
+        message: data.message,
+        time: new Date().toLocaleTimeString(),
+        isSystem: true
+      }]);
+    });
+
+    socket.on('receive-sos', (data) => {
+      setSosAlert(data.message);
+      setSosLocation({ lat: data.lat, lng: data.lng });
+      setTimeout(() => {
+        setSosAlert(null);
+        setSosLocation(null);
+      }, 10000);
     });
 
     socket.on('request-location-update', () => {
@@ -131,7 +170,10 @@ const Trip = () => {
       socket.off('user-disconnected');
       socket.off('receive-message');
       socket.off('user-joined');
+      socket.off('user-left');
       socket.off('receive-meeting-point');
+      socket.off('meeting-point-alert');
+      socket.off('receive-sos');
       socket.off('request-location-update');
       socket.disconnect();
     };
@@ -164,7 +206,8 @@ const Trip = () => {
     socket.emit('set-meeting-point', {
       roomId: roomCode,
       lat: latlng.lat,
-      lng: latlng.lng
+      lng: latlng.lng,
+      userName: user?.name
     });
     alert('📍 Meeting point set! All users can see it!');
   };
@@ -177,6 +220,21 @@ const Trip = () => {
       message: newMessage
     });
     setNewMessage('');
+  };
+
+  const handleSOS = () => {
+    if (myLocation) {
+      if (window.confirm('🆘 Send SOS alert to all trip members?')) {
+        socket.emit('send-sos', {
+          roomId: roomCode,
+          userName: user?.name,
+          lat: myLocation.lat,
+          lng: myLocation.lng
+        });
+      }
+    } else {
+      alert('❌ Location not available yet!');
+    }
   };
 
   const handleLeave = () => {
@@ -230,11 +288,20 @@ const Trip = () => {
               <span style={styles.badge}>{unreadCount}</span>
             )}
           </button>
+          <button style={styles.sosButton} onClick={handleSOS}>
+            🆘 SOS
+          </button>
           <button style={styles.leaveButton} onClick={handleLeave}>
             🚪 Leave
           </button>
         </div>
       </div>
+
+      {sosAlert && (
+        <div style={styles.sosBanner}>
+          🆘 {sosAlert}
+        </div>
+      )}
 
       {myETA && (
         <div style={styles.etaBanner}>
@@ -274,6 +341,14 @@ const Trip = () => {
                   icon={meetingIcon}
                 >
                   <Popup>📍 Meeting Point</Popup>
+                </Marker>
+              )}
+              {sosLocation && (
+                <Marker
+                  position={[sosLocation.lat, sosLocation.lng]}
+                  icon={sosIcon}
+                >
+                  <Popup>🆘 SOS Location!</Popup>
                 </Marker>
               )}
             </MapContainer>
@@ -440,6 +515,16 @@ const styles = {
     fontSize: '11px',
     marginLeft: '5px'
   },
+  sosButton: {
+    padding: '8px 16px',
+    backgroundColor: '#ff0000',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '13px',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  },
   leaveButton: {
     padding: '8px 16px',
     backgroundColor: '#e94560',
@@ -448,6 +533,14 @@ const styles = {
     borderRadius: '8px',
     fontSize: '13px',
     cursor: 'pointer'
+  },
+  sosBanner: {
+    backgroundColor: '#ff0000',
+    color: 'white',
+    padding: '12px 20px',
+    textAlign: 'center',
+    fontSize: '16px',
+    fontWeight: 'bold'
   },
   etaBanner: {
     backgroundColor: '#ff9800',
