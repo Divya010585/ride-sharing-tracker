@@ -37,13 +37,11 @@ module.exports = (io) => {
         lat: data.lat,
         lng: data.lng
       });
-      // Notify all members about meeting point
       socket.to(data.roomId).emit('meeting-point-alert', {
         message: `📍 ${data.userName} set a meeting point!`
       });
     });
 
-    // SOS Emergency
     socket.on('send-sos', (data) => {
       io.to(data.roomId).emit('receive-sos', {
         userName: data.userName,
@@ -53,8 +51,14 @@ module.exports = (io) => {
       });
     });
 
+    // End Trip
+    socket.on('end-trip', (data) => {
+      io.to(data.roomId).emit('trip-ended', {
+        message: `🏁 Trip has been ended by ${data.userName}!`
+      });
+    });
+
     socket.on('disconnect', () => {
-      // Notify room when user leaves
       if (socket.roomId && socket.userName) {
         socket.to(socket.roomId).emit('user-left', {
           message: `${socket.userName} left the trip! 👋`
