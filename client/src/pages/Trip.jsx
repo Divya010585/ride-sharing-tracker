@@ -440,7 +440,7 @@ const Trip = () => {
                 <div key={index}>
                   <div
                     style={msg.isSystem ? styles.systemMessage : msg.id === socket.id ? styles.myMessage : styles.otherMessage}
-                    onDoubleClick={() => !msg.isSystem && setActiveReactionMsg(activeReactionMsg === msg.msgId ? null : msg.msgId)}
+                    onClick={() => !msg.isSystem && setActiveReactionMsg(activeReactionMsg === msg.msgId ? null : msg.msgId)}
                   >
                     {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
                     {msg.type === 'photo' ? (
