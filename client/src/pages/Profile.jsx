@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
@@ -27,7 +27,7 @@ const Profile = () => {
     setError('');
     setMessage('');
     try {
-      const res = await axios.put(`${API}/api/auth/update-profile`,
+      await axios.put(`${API}/api/auth/update-profile`,
         { name },
         { headers: { authorization: token } }
       );
