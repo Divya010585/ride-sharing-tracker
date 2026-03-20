@@ -5,18 +5,16 @@ module.exports = (io) => {
     socket.on('join-room', (data) => {
       socket.join(data.roomId);
       socket.userName = data.userName;
+      socket.roomId = data.roomId;
       console.log(`User ${socket.id} joined room ${data.roomId}`);
 
-      // Notify others that a new user joined
       socket.to(data.roomId).emit('user-joined', {
         message: `${data.userName} joined the trip! 🚗`
       });
 
-      // Ask all users to re-send their location
       io.to(data.roomId).emit('request-location-update');
     });
 
-    // Handle live location
     socket.on('send-location', (data) => {
       io.to(data.roomId).emit('receive-location', {
         id: socket.id,
@@ -25,7 +23,6 @@ module.exports = (io) => {
       });
     });
 
-    // Handle chat messages
     socket.on('send-message', (data) => {
       io.to(data.roomId).emit('receive-message', {
         id: socket.id,
@@ -35,15 +32,34 @@ module.exports = (io) => {
       });
     });
 
-    // Handle meeting point — io.to sends to EVERYONE including sender
     socket.on('set-meeting-point', (data) => {
       io.to(data.roomId).emit('receive-meeting-point', {
         lat: data.lat,
         lng: data.lng
       });
+      // Notify all members about meeting point
+      socket.to(data.roomId).emit('meeting-point-alert', {
+        message: `📍 ${data.userName} set a meeting point!`
+      });
+    });
+
+    // SOS Emergency
+    socket.on('send-sos', (data) => {
+      io.to(data.roomId).emit('receive-sos', {
+        userName: data.userName,
+        lat: data.lat,
+        lng: data.lng,
+        message: `🆘 ${data.userName} needs help!`
+      });
     });
 
     socket.on('disconnect', () => {
+      // Notify room when user leaves
+      if (socket.roomId && socket.userName) {
+        socket.to(socket.roomId).emit('user-left', {
+          message: `${socket.userName} left the trip! 👋`
+        });
+      }
       io.emit('user-disconnected', socket.id);
       console.log('❌ User disconnected:', socket.id);
     });
