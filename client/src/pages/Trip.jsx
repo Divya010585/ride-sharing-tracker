@@ -57,9 +57,23 @@ const Trip = () => {
   const [myETA, setMyETA] = useState(null);
   const [sosAlert, setSosAlert] = useState(null);
   const [sosLocation, setSosLocation] = useState(null);
+  const [tripCreator, setTripCreator] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    // Check if user is trip creator
+    const token = localStorage.getItem('token');
+    fetch(`https://ride-sharing-tracker-backend.onrender.com/api/trips/${roomCode}`, {
+      headers: { authorization: token }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.trip && data.trip.created_by === user?.id) {
+          setTripCreator(true);
+        }
+      })
+      .catch(err => console.log(err));
+
     socket.connect();
     socket.emit('join-room', {
       roomId: roomCode,
@@ -70,7 +84,6 @@ const Trip = () => {
       (position) => {
         const { latitude, longitude } = position.coords;
         setMyLocation({ lat: latitude, lng: longitude });
-
         if (!isGhost) {
           socket.emit('send-location', {
             roomId: roomCode,
@@ -85,10 +98,7 @@ const Trip = () => {
 
     socket.on('receive-location', (data) => {
       setOtherUsers((prev) => {
-        const updated = {
-          ...prev,
-          [data.id]: { lat: data.lat, lng: data.lng }
-        };
+        const updated = { ...prev, [data.id]: { lat: data.lat, lng: data.lng } };
         setParticipantCount(Object.keys(updated).length + 1);
         return updated;
       });
@@ -151,6 +161,12 @@ const Trip = () => {
       }, 10000);
     });
 
+    socket.on('trip-ended', (data) => {
+      alert(data.message);
+      socket.disconnect();
+      navigate('/dashboard');
+    });
+
     socket.on('request-location-update', () => {
       navigator.geolocation.getCurrentPosition((position) => {
         const { latitude, longitude } = position.coords;
@@ -174,6 +190,7 @@ const Trip = () => {
       socket.off('receive-meeting-point');
       socket.off('meeting-point-alert');
       socket.off('receive-sos');
+      socket.off('trip-ended');
       socket.off('request-location-update');
       socket.disconnect();
     };
@@ -237,6 +254,15 @@ const Trip = () => {
     }
   };
 
+  const handleEndTrip = () => {
+    if (window.confirm('🏁 Are you sure you want to end the trip for everyone?')) {
+      socket.emit('end-trip', {
+        roomId: roomCode,
+        userName: user?.name
+      });
+    }
+  };
+
   const handleLeave = () => {
     socket.disconnect();
     navigate('/dashboard');
@@ -280,10 +306,7 @@ const Trip = () => {
           >
             {isGhost ? '👻 Ghost ON' : '👁️ Ghost OFF'}
           </button>
-          <button
-            style={styles.chatButton}
-            onClick={() => setShowChat(!showChat)}
-          >
+          <button style={styles.chatButton} onClick={() => setShowChat(!showChat)}>
             💬 Chat {unreadCount > 0 && !showChat && (
               <span style={styles.badge}>{unreadCount}</span>
             )}
@@ -291,6 +314,11 @@ const Trip = () => {
           <button style={styles.sosButton} onClick={handleSOS}>
             🆘 SOS
           </button>
+          {tripCreator && (
+            <button style={styles.endTripButton} onClick={handleEndTrip}>
+              🏁 End Trip
+            </button>
+          )}
           <button style={styles.leaveButton} onClick={handleLeave}>
             🚪 Leave
           </button>
@@ -336,18 +364,12 @@ const Trip = () => {
                 </Marker>
               ))}
               {meetingPoint && (
-                <Marker
-                  position={[meetingPoint.lat, meetingPoint.lng]}
-                  icon={meetingIcon}
-                >
+                <Marker position={[meetingPoint.lat, meetingPoint.lng]} icon={meetingIcon}>
                   <Popup>📍 Meeting Point</Popup>
                 </Marker>
               )}
               {sosLocation && (
-                <Marker
-                  position={[sosLocation.lat, sosLocation.lng]}
-                  icon={sosIcon}
-                >
+                <Marker position={[sosLocation.lat, sosLocation.lng]} icon={sosIcon}>
                   <Popup>🆘 SOS Location!</Popup>
                 </Marker>
               )}
@@ -364,9 +386,7 @@ const Trip = () => {
           <div style={styles.chatSidebar}>
             <div style={styles.chatHeader}>
               <h3 style={styles.chatTitle}>💬 Trip Chat</h3>
-              <button style={styles.closeChat} onClick={() => setShowChat(false)}>
-                ✕
-              </button>
+              <button style={styles.closeChat} onClick={() => setShowChat(false)}>✕</button>
             </div>
             <div style={styles.messagesContainer}>
               {messages.length === 0 && (
@@ -376,16 +396,12 @@ const Trip = () => {
                 <div
                   key={index}
                   style={
-                    msg.isSystem
-                      ? styles.systemMessage
-                      : msg.id === socket.id
-                      ? styles.myMessage
-                      : styles.otherMessage
+                    msg.isSystem ? styles.systemMessage
+                    : msg.id === socket.id ? styles.myMessage
+                    : styles.otherMessage
                   }
                 >
-                  {!msg.isSystem && (
-                    <p style={styles.messageName}>{msg.userName}</p>
-                  )}
+                  {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
                   <p style={styles.messageText}>{msg.message}</p>
                   <p style={styles.messageTime}>{msg.time}</p>
                 </div>
@@ -401,9 +417,7 @@ const Trip = () => {
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               />
-              <button style={styles.sendButton} onClick={handleSendMessage}>
-                Send
-              </button>
+              <button style={styles.sendButton} onClick={handleSendMessage}>Send</button>
             </div>
           </div>
         )}
@@ -413,270 +427,44 @@ const Trip = () => {
 };
 
 const styles = {
-  container: {
-    height: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: '#1a1a2e'
-  },
-  header: {
-    backgroundColor: '#16213e',
-    padding: '15px 20px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 1000
-  },
-  title: {
-    margin: 0,
-    color: 'white',
-    fontSize: '18px'
-  },
-  info: {
-    textAlign: 'center'
-  },
-  roomCode: {
-    margin: 0,
-    color: 'white',
-    fontSize: '14px'
-  },
-  copyButton: {
-    marginLeft: '10px',
-    padding: '4px 10px',
-    backgroundColor: '#ff9800',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '12px'
-  },
-  status: {
-    margin: 0,
-    fontSize: '12px',
-    color: '#888'
-  },
-  buttons: {
-    display: 'flex',
-    gap: '10px',
-    alignItems: 'center'
-  },
-  etaButtonOff: {
-    padding: '8px 16px',
-    backgroundColor: '#0f3460',
-    color: 'white',
-    border: '2px solid #ff9800',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer'
-  },
-  etaButtonOn: {
-    padding: '8px 16px',
-    backgroundColor: '#ff9800',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer'
-  },
-  ghostButtonOff: {
-    padding: '8px 16px',
-    backgroundColor: '#9e9e9e',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer'
-  },
-  ghostButtonOn: {
-    padding: '8px 16px',
-    backgroundColor: '#673ab7',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer'
-  },
-  chatButton: {
-    padding: '8px 16px',
-    backgroundColor: '#0f3460',
-    color: 'white',
-    border: '2px solid #e94560',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer',
-    position: 'relative'
-  },
-  badge: {
-    backgroundColor: '#e94560',
-    color: 'white',
-    borderRadius: '50%',
-    padding: '2px 6px',
-    fontSize: '11px',
-    marginLeft: '5px'
-  },
-  sosButton: {
-    padding: '8px 16px',
-    backgroundColor: '#ff0000',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  },
-  leaveButton: {
-    padding: '8px 16px',
-    backgroundColor: '#e94560',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '13px',
-    cursor: 'pointer'
-  },
-  sosBanner: {
-    backgroundColor: '#ff0000',
-    color: 'white',
-    padding: '12px 20px',
-    textAlign: 'center',
-    fontSize: '16px',
-    fontWeight: 'bold'
-  },
-  etaBanner: {
-    backgroundColor: '#ff9800',
-    color: 'white',
-    padding: '8px 20px',
-    textAlign: 'center',
-    fontSize: '14px',
-    fontWeight: 'bold'
-  },
-  mainContent: {
-    display: 'flex',
-    flex: 1,
-    overflow: 'hidden'
-  },
-  loading: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1a2e',
-    height: 'calc(100vh - 80px)'
-  },
-  loadingText: {
-    fontSize: '24px',
-    color: 'white'
-  },
-  loadingSubtext: {
-    fontSize: '16px',
-    color: '#888'
-  },
-  chatSidebar: {
-    width: '320px',
-    backgroundColor: '#16213e',
-    display: 'flex',
-    flexDirection: 'column',
-    borderLeft: '1px solid #0f3460',
-    height: 'calc(100vh - 80px)'
-  },
-  chatHeader: {
-    padding: '15px',
-    borderBottom: '1px solid #0f3460',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  chatTitle: {
-    margin: 0,
-    color: 'white',
-    fontSize: '16px'
-  },
-  closeChat: {
-    backgroundColor: 'transparent',
-    border: 'none',
-    color: '#888',
-    fontSize: '16px',
-    cursor: 'pointer'
-  },
-  messagesContainer: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '15px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  noMessages: {
-    color: '#888',
-    textAlign: 'center',
-    fontSize: '14px',
-    marginTop: '20px'
-  },
-  myMessage: {
-    backgroundColor: '#e94560',
-    padding: '10px',
-    borderRadius: '10px 10px 0 10px',
-    alignSelf: 'flex-end',
-    maxWidth: '80%'
-  },
-  otherMessage: {
-    backgroundColor: '#0f3460',
-    padding: '10px',
-    borderRadius: '10px 10px 10px 0',
-    alignSelf: 'flex-start',
-    maxWidth: '80%'
-  },
-  systemMessage: {
-    backgroundColor: '#333',
-    padding: '8px',
-    borderRadius: '8px',
-    alignSelf: 'center',
-    maxWidth: '90%'
-  },
-  messageName: {
-    margin: '0 0 4px 0',
-    color: '#aaa',
-    fontSize: '11px',
-    fontWeight: 'bold'
-  },
-  messageText: {
-    margin: 0,
-    color: 'white',
-    fontSize: '14px'
-  },
-  messageTime: {
-    margin: '4px 0 0 0',
-    color: '#aaa',
-    fontSize: '10px',
-    textAlign: 'right'
-  },
-  chatInput: {
-    padding: '15px',
-    borderTop: '1px solid #0f3460',
-    display: 'flex',
-    gap: '10px'
-  },
-  messageInput: {
-    flex: 1,
-    padding: '10px',
-    borderRadius: '8px',
-    border: '1px solid #0f3460',
-    backgroundColor: '#0f3460',
-    color: 'white',
-    fontSize: '14px',
-    outline: 'none'
-  },
-  sendButton: {
-    padding: '10px 16px',
-    backgroundColor: '#e94560',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 'bold'
-  }
+  container: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#1a1a2e' },
+  header: { backgroundColor: '#16213e', padding: '15px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1000 },
+  title: { margin: 0, color: 'white', fontSize: '18px' },
+  info: { textAlign: 'center' },
+  roomCode: { margin: 0, color: 'white', fontSize: '14px' },
+  copyButton: { marginLeft: '10px', padding: '4px 10px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' },
+  status: { margin: 0, fontSize: '12px', color: '#888' },
+  buttons: { display: 'flex', gap: '10px', alignItems: 'center' },
+  etaButtonOff: { padding: '8px 16px', backgroundColor: '#0f3460', color: 'white', border: '2px solid #ff9800', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
+  etaButtonOn: { padding: '8px 16px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
+  ghostButtonOff: { padding: '8px 16px', backgroundColor: '#9e9e9e', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
+  ghostButtonOn: { padding: '8px 16px', backgroundColor: '#673ab7', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
+  chatButton: { padding: '8px 16px', backgroundColor: '#0f3460', color: 'white', border: '2px solid #e94560', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', position: 'relative' },
+  badge: { backgroundColor: '#e94560', color: 'white', borderRadius: '50%', padding: '2px 6px', fontSize: '11px', marginLeft: '5px' },
+  sosButton: { padding: '8px 16px', backgroundColor: '#ff0000', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' },
+  endTripButton: { padding: '8px 16px', backgroundColor: '#ff6600', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' },
+  leaveButton: { padding: '8px 16px', backgroundColor: '#e94560', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
+  sosBanner: { backgroundColor: '#ff0000', color: 'white', padding: '12px 20px', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' },
+  etaBanner: { backgroundColor: '#ff9800', color: 'white', padding: '8px 20px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold' },
+  mainContent: { display: 'flex', flex: 1, overflow: 'hidden' },
+  loading: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e', height: 'calc(100vh - 80px)' },
+  loadingText: { fontSize: '24px', color: 'white' },
+  loadingSubtext: { fontSize: '16px', color: '#888' },
+  chatSidebar: { width: '320px', backgroundColor: '#16213e', display: 'flex', flexDirection: 'column', borderLeft: '1px solid #0f3460', height: 'calc(100vh - 80px)' },
+  chatHeader: { padding: '15px', borderBottom: '1px solid #0f3460', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  chatTitle: { margin: 0, color: 'white', fontSize: '16px' },
+  closeChat: { backgroundColor: 'transparent', border: 'none', color: '#888', fontSize: '16px', cursor: 'pointer' },
+  messagesContainer: { flex: 1, overflowY: 'auto', padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
+  noMessages: { color: '#888', textAlign: 'center', fontSize: '14px', marginTop: '20px' },
+  myMessage: { backgroundColor: '#e94560', padding: '10px', borderRadius: '10px 10px 0 10px', alignSelf: 'flex-end', maxWidth: '80%' },
+  otherMessage: { backgroundColor: '#0f3460', padding: '10px', borderRadius: '10px 10px 10px 0', alignSelf: 'flex-start', maxWidth: '80%' },
+  systemMessage: { backgroundColor: '#333', padding: '8px', borderRadius: '8px', alignSelf: 'center', maxWidth: '90%' },
+  messageName: { margin: '0 0 4px 0', color: '#aaa', fontSize: '11px', fontWeight: 'bold' },
+  messageText: { margin: 0, color: 'white', fontSize: '14px' },
+  messageTime: { margin: '4px 0 0 0', color: '#aaa', fontSize: '10px', textAlign: 'right' },
+  chatInput: { padding: '15px', borderTop: '1px solid #0f3460', display: 'flex', gap: '10px' },
+  messageInput: { flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #0f3460', backgroundColor: '#0f3460', color: 'white', fontSize: '14px', outline: 'none' },
+  sendButton: { padding: '10px 16px', backgroundColor: '#e94560', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }
 };
 
 export default Trip;
