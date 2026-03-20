@@ -1,4 +1,6 @@
 module.exports = (io) => {
+  const roomMembers = {};
+
   io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
 
@@ -6,12 +8,15 @@ module.exports = (io) => {
       socket.join(data.roomId);
       socket.userName = data.userName;
       socket.roomId = data.roomId;
-      console.log(`User ${socket.id} joined room ${data.roomId}`);
+
+      if (!roomMembers[data.roomId]) roomMembers[data.roomId] = {};
+      roomMembers[data.roomId][socket.id] = { userName: data.userName, online: true };
 
       socket.to(data.roomId).emit('user-joined', {
         message: `${data.userName} joined the trip! 🚗`
       });
 
+      io.to(data.roomId).emit('room-members', roomMembers[data.roomId]);
       io.to(data.roomId).emit('request-location-update');
     });
 
@@ -19,16 +24,53 @@ module.exports = (io) => {
       io.to(data.roomId).emit('receive-location', {
         id: socket.id,
         lat: data.lat,
-        lng: data.lng
+        lng: data.lng,
+        userName: data.userName
       });
     });
 
+    // Text message
     socket.on('send-message', (data) => {
+      const msgId = Date.now().toString();
       io.to(data.roomId).emit('receive-message', {
         id: socket.id,
+        msgId,
         userName: data.userName,
         message: data.message,
-        time: new Date().toLocaleTimeString()
+        type: 'text',
+        time: new Date().toLocaleTimeString(),
+        reactions: {}
+      });
+    });
+
+    // Photo message
+    socket.on('send-photo', (data) => {
+      const msgId = Date.now().toString();
+      io.to(data.roomId).emit('receive-message', {
+        id: socket.id,
+        msgId,
+        userName: data.userName,
+        message: data.photoUrl,
+        type: 'photo',
+        time: new Date().toLocaleTimeString(),
+        reactions: {}
+      });
+    });
+
+    // Message reaction
+    socket.on('send-reaction', (data) => {
+      io.to(data.roomId).emit('receive-reaction', {
+        msgId: data.msgId,
+        emoji: data.emoji,
+        userName: data.userName
+      });
+    });
+
+    // Read receipt
+    socket.on('message-read', (data) => {
+      socket.to(data.roomId).emit('receive-read', {
+        msgId: data.msgId,
+        userName: data.userName
       });
     });
 
@@ -51,7 +93,6 @@ module.exports = (io) => {
       });
     });
 
-    // End Trip
     socket.on('end-trip', (data) => {
       io.to(data.roomId).emit('trip-ended', {
         message: `🏁 Trip has been ended by ${data.userName}!`
@@ -63,6 +104,10 @@ module.exports = (io) => {
         socket.to(socket.roomId).emit('user-left', {
           message: `${socket.userName} left the trip! 👋`
         });
+        if (roomMembers[socket.roomId]) {
+          delete roomMembers[socket.roomId][socket.id];
+          io.to(socket.roomId).emit('room-members', roomMembers[socket.roomId]);
+        }
       }
       io.emit('user-disconnected', socket.id);
       console.log('❌ User disconnected:', socket.id);
