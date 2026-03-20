@@ -18,7 +18,13 @@ const Navbar = () => {
       </div>
       {user && (
         <div style={styles.right}>
+          <div style={styles.avatar} onClick={() => navigate('/profile')}>
+            {user.name.charAt(0).toUpperCase()}
+          </div>
           <span style={styles.username}>👋 {user.name}</span>
+          <button style={styles.profileBtn} onClick={() => navigate('/profile')}>
+            👤 Profile
+          </button>
           <button style={styles.logoutBtn} onClick={handleLogout}>
             Logout
           </button>
@@ -48,8 +54,30 @@ const styles = {
     alignItems: 'center',
     gap: '15px'
   },
+  avatar: {
+    width: '35px',
+    height: '35px',
+    borderRadius: '50%',
+    backgroundColor: '#e94560',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: 'white',
+    cursor: 'pointer'
+  },
   username: {
     color: 'white',
+    fontSize: '14px'
+  },
+  profileBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#0f3460',
+    color: 'white',
+    border: '2px solid #e94560',
+    borderRadius: '6px',
+    cursor: 'pointer',
     fontSize: '14px'
   },
   logoutBtn: {

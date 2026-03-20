@@ -31,7 +31,6 @@ const register = (req, res) => {
       (err, result) => {
         if (err) return res.status(500).json({ message: 'Database error' });
 
-        // Send verification email
         const verifyUrl = `https://ride-sharing-tracker-backend.onrender.com/api/auth/verify/${verificationToken}`;
 
         const mailOptions = {
@@ -61,7 +60,7 @@ const register = (req, res) => {
           if (err) console.log('Email error:', err);
         });
 
-        res.status(201).json({ message: '✅ Registered! Please check your email to verify your account.' });
+        res.status(201).json({ message: '✅ Registered successfully! Please login.' });
       }
     );
   });
@@ -116,4 +115,42 @@ const login = (req, res) => {
   });
 };
 
-module.exports = { register, verifyEmail, login };
+// Update Profile Name
+const updateProfile = (req, res) => {
+  const { name } = req.body;
+  const userId = req.user.id;
+
+  db.query('UPDATE users SET name = ? WHERE id = ?',
+    [name, userId],
+    (err) => {
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json({ message: '✅ Profile updated!' });
+    }
+  );
+};
+
+// Change Password
+const changePassword = (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user.id;
+
+  db.query('SELECT * FROM users WHERE id = ?', [userId], (err, results) => {
+    if (err) return res.status(500).json({ message: 'Database error' });
+    if (results.length === 0) return res.status(404).json({ message: 'User not found' });
+
+    const user = results[0];
+    const isMatch = bcrypt.compareSync(currentPassword, user.password);
+    if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect!' });
+
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    db.query('UPDATE users SET password = ? WHERE id = ?',
+      [hashedPassword, userId],
+      (err) => {
+        if (err) return res.status(500).json({ message: 'Database error' });
+        res.status(200).json({ message: '✅ Password changed successfully!' });
+      }
+    );
+  });
+};
+
+module.exports = { register, verifyEmail, login, updateProfile, changePassword };

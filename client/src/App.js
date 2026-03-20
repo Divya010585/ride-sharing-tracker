@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Trip from './pages/Trip';
 import TripHistory from './pages/TripHistory';
+import Profile from './pages/Profile';
 import PrivateRoute from './components/PrivateRoute';
 
 function App() {
@@ -26,6 +27,11 @@ function App() {
         <Route path="/history" element={
           <PrivateRoute>
             <TripHistory />
+          </PrivateRoute>
+        } />
+        <Route path="/profile" element={
+          <PrivateRoute>
+            <Profile />
           </PrivateRoute>
         } />
       </Routes>
