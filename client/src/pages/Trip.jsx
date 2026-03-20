@@ -13,7 +13,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-const colors = ['blue', 'red', 'green', 'orange', 'yellow', 'violet', 'grey', 'black'];
+const colors = ['blue', 'green', 'orange', 'yellow', 'violet', 'grey', 'black'];
 
 const getColorIcon = (color) => new L.Icon({
   iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
@@ -41,6 +41,8 @@ const MapClickHandler = ({ onMapClick, settingMeetingPoint }) => {
   return null;
 };
 
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
+
 const Trip = () => {
   const { roomCode } = useParams();
   const navigate = useNavigate();
@@ -63,11 +65,14 @@ const Trip = () => {
   const [showSosCountdown, setShowSosCountdown] = useState(false);
   const [sosCountdown, setSosCountdown] = useState(30);
   const [allETAs, setAllETAs] = useState({});
+  const [activeReactionMsg, setActiveReactionMsg] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const lastMovementRef = useRef(Date.now());
   const countdownRef = useRef(null);
   const colorMapRef = useRef({});
   const colorIndexRef = useRef(0);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const getUserColor = (id) => {
     if (!colorMapRef.current[id]) {
@@ -84,9 +89,7 @@ const Trip = () => {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.trip && data.trip.created_by === user?.id) {
-          setTripCreator(true);
-        }
+        if (data.trip && data.trip.created_by === user?.id) setTripCreator(true);
       })
       .catch(err => console.log(err));
 
@@ -99,12 +102,7 @@ const Trip = () => {
         setMyLocation({ lat: latitude, lng: longitude });
         lastMovementRef.current = Date.now();
         if (!isGhost) {
-          socket.emit('send-location', {
-            roomId: roomCode,
-            lat: latitude,
-            lng: longitude,
-            userName: user?.name
-          });
+          socket.emit('send-location', { roomId: roomCode, lat: latitude, lng: longitude, userName: user?.name });
         }
       },
       (error) => console.log('Location error:', error),
@@ -129,8 +127,32 @@ const Trip = () => {
     });
 
     socket.on('receive-message', (data) => {
-      setMessages((prev) => [...prev, data]);
+      setMessages((prev) => [...prev, { ...data, reactions: {} }]);
       setUnreadCount((prev) => prev + 1);
+      socket.emit('message-read', { roomId: roomCode, msgId: data.msgId, userName: user?.name });
+    });
+
+    socket.on('receive-reaction', (data) => {
+      setMessages((prev) => prev.map(msg => {
+        if (msg.msgId === data.msgId) {
+          const reactions = { ...msg.reactions };
+          if (!reactions[data.emoji]) reactions[data.emoji] = [];
+          if (!reactions[data.emoji].includes(data.userName)) {
+            reactions[data.emoji] = [...reactions[data.emoji], data.userName];
+          }
+          return { ...msg, reactions };
+        }
+        return msg;
+      }));
+    });
+
+    socket.on('receive-read', (data) => {
+      setMessages((prev) => prev.map(msg => {
+        if (msg.msgId === data.msgId) {
+          return { ...msg, readBy: [...(msg.readBy || []), data.userName] };
+        }
+        return msg;
+      }));
     });
 
     socket.on('user-joined', (data) => {
@@ -175,6 +197,8 @@ const Trip = () => {
       socket.off('receive-location');
       socket.off('user-disconnected');
       socket.off('receive-message');
+      socket.off('receive-reaction');
+      socket.off('receive-read');
       socket.off('user-joined');
       socket.off('user-left');
       socket.off('receive-meeting-point');
@@ -187,7 +211,7 @@ const Trip = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isGhost]);
 
-  // Auto SOS - check movement every 30 seconds
+  // Auto SOS
   useEffect(() => {
     const movementInterval = setInterval(() => {
       const timeSinceMovement = Date.now() - lastMovementRef.current;
@@ -199,7 +223,6 @@ const Trip = () => {
     return () => clearInterval(movementInterval);
   }, [showSosCountdown]);
 
-  // SOS countdown timer
   useEffect(() => {
     if (showSosCountdown) {
       countdownRef.current = setInterval(() => {
@@ -220,25 +243,19 @@ const Trip = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSosCountdown]);
 
-  // Calculate ETA for all members
+  // All ETAs
   useEffect(() => {
     if (meetingPoint) {
       const etas = {};
       if (myLocation) {
-        const dist = getDistance(
-          { latitude: myLocation.lat, longitude: myLocation.lng },
-          { latitude: meetingPoint.lat, longitude: meetingPoint.lng }
-        );
+        const dist = getDistance({ latitude: myLocation.lat, longitude: myLocation.lng }, { latitude: meetingPoint.lat, longitude: meetingPoint.lng });
         const km = (dist / 1000).toFixed(2);
         const mins = Math.ceil((km / 40) * 60);
         etas['me'] = { userName: user?.name, distance: km, minutes: mins };
         setMyETA({ distance: km, minutes: mins });
       }
       Object.entries(otherUsers).forEach(([id, loc]) => {
-        const dist = getDistance(
-          { latitude: loc.lat, longitude: loc.lng },
-          { latitude: meetingPoint.lat, longitude: meetingPoint.lng }
-        );
+        const dist = getDistance({ latitude: loc.lat, longitude: loc.lng }, { latitude: meetingPoint.lat, longitude: meetingPoint.lng });
         const km = (dist / 1000).toFixed(2);
         const mins = Math.ceil((km / 40) * 60);
         etas[id] = { userName: loc.userName || 'Member', distance: km, minutes: mins };
@@ -247,7 +264,7 @@ const Trip = () => {
     }
   }, [myLocation, otherUsers, meetingPoint]);
 
-  // Fetch weather at meeting point
+  // Weather
   useEffect(() => {
     if (meetingPoint) {
       fetch(`https://wttr.in/${meetingPoint.lat},${meetingPoint.lng}?format=3`)
@@ -276,6 +293,30 @@ const Trip = () => {
     if (!newMessage.trim()) return;
     socket.emit('send-message', { roomId: roomCode, userName: user?.name, message: newMessage });
     setNewMessage('');
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const res = await fetch('https://ride-sharing-tracker-backend.onrender.com/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      socket.emit('send-photo', { roomId: roomCode, userName: user?.name, photoUrl: data.photoUrl });
+    } catch (err) {
+      alert('Failed to upload photo!');
+    }
+    setUploading(false);
+  };
+
+  const handleReaction = (msgId, emoji) => {
+    socket.emit('send-reaction', { roomId: roomCode, msgId, emoji, userName: user?.name });
+    setActiveReactionMsg(null);
   };
 
   const handleSOS = () => {
@@ -346,15 +387,12 @@ const Trip = () => {
         </div>
       )}
 
-      {/* All ETAs Panel */}
       {Object.keys(allETAs).length > 0 && (
         <div style={styles.etaPanel}>
           <p style={styles.etaPanelTitle}>⏱️ All Members ETA:</p>
           <div style={styles.etaList}>
             {Object.entries(allETAs).map(([id, eta]) => (
-              <span key={id} style={styles.etaItem}>
-                👤 {eta.userName}: {eta.distance}km · {eta.minutes}min
-              </span>
+              <span key={id} style={styles.etaItem}>👤 {eta.userName}: {eta.distance}km · {eta.minutes}min</span>
             ))}
           </div>
         </div>
@@ -363,11 +401,7 @@ const Trip = () => {
       <div style={styles.mainContent}>
         <div style={{ flex: 1 }}>
           {myLocation ? (
-            <MapContainer
-              center={[myLocation.lat, myLocation.lng]}
-              zoom={15}
-              style={{ height: 'calc(100vh - 160px)', width: '100%' }}
-            >
+            <MapContainer center={[myLocation.lat, myLocation.lng]} zoom={15} style={{ height: 'calc(100vh - 160px)', width: '100%' }}>
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" />
               <MapClickHandler onMapClick={handleMapClick} settingMeetingPoint={settingMeetingPoint} />
               {!isGhost && (
@@ -379,20 +413,12 @@ const Trip = () => {
                 <Marker key={id} position={[location.lat, location.lng]} icon={getColorIcon(getUserColor(id))}>
                   <Popup>
                     👤 {location.userName || 'Member'}
-                    {allETAs[id] && <><br/>📍 {allETAs[id].distance} km<br/>⏱️ ETA: {allETAs[id].minutes} min</>}
+                    {allETAs[id] && <><br />📍 {allETAs[id].distance} km<br />⏱️ ETA: {allETAs[id].minutes} min</>}
                   </Popup>
                 </Marker>
               ))}
-              {meetingPoint && (
-                <Marker position={[meetingPoint.lat, meetingPoint.lng]} icon={meetingIcon}>
-                  <Popup>📍 Meeting Point</Popup>
-                </Marker>
-              )}
-              {sosLocation && (
-                <Marker position={[sosLocation.lat, sosLocation.lng]} icon={sosIcon}>
-                  <Popup>🆘 SOS Location!</Popup>
-                </Marker>
-              )}
+              {meetingPoint && <Marker position={[meetingPoint.lat, meetingPoint.lng]} icon={meetingIcon}><Popup>📍 Meeting Point</Popup></Marker>}
+              {sosLocation && <Marker position={[sosLocation.lat, sosLocation.lng]} icon={sosIcon}><Popup>🆘 SOS Location!</Popup></Marker>}
             </MapContainer>
           ) : (
             <div style={styles.loading}>
@@ -411,15 +437,63 @@ const Trip = () => {
             <div style={styles.messagesContainer}>
               {messages.length === 0 && <p style={styles.noMessages}>No messages yet — say hi! 👋</p>}
               {messages.map((msg, index) => (
-                <div key={index} style={msg.isSystem ? styles.systemMessage : msg.id === socket.id ? styles.myMessage : styles.otherMessage}>
-                  {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
-                  <p style={styles.messageText}>{msg.message}</p>
-                  <p style={styles.messageTime}>{msg.time}</p>
+                <div key={index}>
+                  <div
+                    style={msg.isSystem ? styles.systemMessage : msg.id === socket.id ? styles.myMessage : styles.otherMessage}
+                    onDoubleClick={() => !msg.isSystem && setActiveReactionMsg(activeReactionMsg === msg.msgId ? null : msg.msgId)}
+                  >
+                    {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
+                    {msg.type === 'photo' ? (
+                      <img src={msg.message} alt="shared" style={styles.chatPhoto} />
+                    ) : (
+                      <p style={styles.messageText}>{msg.message}</p>
+                    )}
+                    <div style={styles.messageFooter}>
+                      <p style={styles.messageTime}>{msg.time}</p>
+                      {msg.id === socket.id && (
+                        <span style={styles.readReceipt}>
+                          {msg.readBy && msg.readBy.length > 0 ? '✓✓' : '✓'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Reactions display */}
+                  {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                    <div style={msg.id === socket.id ? styles.reactionsRight : styles.reactionsLeft}>
+                      {Object.entries(msg.reactions).map(([emoji, users]) => (
+                        <span key={emoji} style={styles.reactionBubble} title={users.join(', ')}>
+                          {emoji} {users.length}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reaction picker */}
+                  {activeReactionMsg === msg.msgId && (
+                    <div style={msg.id === socket.id ? styles.reactionPickerRight : styles.reactionPickerLeft}>
+                      {REACTIONS.map(emoji => (
+                        <span key={emoji} style={styles.reactionOption} onClick={() => handleReaction(msg.msgId, emoji)}>
+                          {emoji}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
             <div style={styles.chatInput}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handlePhotoUpload}
+              />
+              <button style={styles.photoButton} onClick={() => fileInputRef.current.click()} disabled={uploading}>
+                {uploading ? '⏳' : '📷'}
+              </button>
               <input
                 style={styles.messageInput}
                 type="text"
@@ -458,7 +532,7 @@ const styles = {
   sosBanner: { backgroundColor: '#ff0000', color: 'white', padding: '12px 20px', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' },
   sosCountdownBanner: { backgroundColor: '#ff6600', color: 'white', padding: '15px 20px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' },
   sosCountdownText: { margin: 0, fontSize: '16px', fontWeight: 'bold' },
-  sosCountdownNumber: { margin: 0, fontSize: '28px', fontWeight: 'bold', color: 'white' },
+  sosCountdownNumber: { margin: 0, fontSize: '28px', fontWeight: 'bold' },
   imOkButton: { padding: '10px 20px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', fontWeight: 'bold' },
   etaBanner: { backgroundColor: '#ff9800', color: 'white', padding: '8px 20px', textAlign: 'center', fontSize: '14px', fontWeight: 'bold' },
   weatherText: { fontSize: '12px', opacity: 0.9 },
@@ -476,13 +550,23 @@ const styles = {
   closeChat: { backgroundColor: 'transparent', border: 'none', color: '#888', fontSize: '16px', cursor: 'pointer' },
   messagesContainer: { flex: 1, overflowY: 'auto', padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px' },
   noMessages: { color: '#888', textAlign: 'center', fontSize: '14px', marginTop: '20px' },
-  myMessage: { backgroundColor: '#e94560', padding: '10px', borderRadius: '10px 10px 0 10px', alignSelf: 'flex-end', maxWidth: '80%' },
-  otherMessage: { backgroundColor: '#0f3460', padding: '10px', borderRadius: '10px 10px 10px 0', alignSelf: 'flex-start', maxWidth: '80%' },
+  myMessage: { backgroundColor: '#e94560', padding: '10px', borderRadius: '10px 10px 0 10px', alignSelf: 'flex-end', maxWidth: '80%', cursor: 'pointer' },
+  otherMessage: { backgroundColor: '#0f3460', padding: '10px', borderRadius: '10px 10px 10px 0', alignSelf: 'flex-start', maxWidth: '80%', cursor: 'pointer' },
   systemMessage: { backgroundColor: '#333', padding: '8px', borderRadius: '8px', alignSelf: 'center', maxWidth: '90%' },
   messageName: { margin: '0 0 4px 0', color: '#aaa', fontSize: '11px', fontWeight: 'bold' },
   messageText: { margin: 0, color: 'white', fontSize: '14px' },
-  messageTime: { margin: '4px 0 0 0', color: '#aaa', fontSize: '10px', textAlign: 'right' },
+  chatPhoto: { maxWidth: '200px', maxHeight: '200px', borderRadius: '8px', cursor: 'pointer' },
+  messageFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' },
+  messageTime: { margin: 0, color: '#aaa', fontSize: '10px' },
+  readReceipt: { color: '#aaa', fontSize: '11px' },
+  reactionsRight: { display: 'flex', gap: '4px', justifyContent: 'flex-end', marginTop: '2px' },
+  reactionsLeft: { display: 'flex', gap: '4px', justifyContent: 'flex-start', marginTop: '2px' },
+  reactionBubble: { backgroundColor: '#0f3460', padding: '2px 8px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer' },
+  reactionPickerRight: { display: 'flex', gap: '8px', justifyContent: 'flex-end', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
+  reactionPickerLeft: { display: 'flex', gap: '8px', justifyContent: 'flex-start', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
+  reactionOption: { fontSize: '20px', cursor: 'pointer' },
   chatInput: { padding: '15px', borderTop: '1px solid #0f3460', display: 'flex', gap: '10px' },
+  photoButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
   messageInput: { flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #0f3460', backgroundColor: '#0f3460', color: 'white', fontSize: '14px', outline: 'none' },
   sendButton: { padding: '10px 16px', backgroundColor: '#e94560', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }
 };
