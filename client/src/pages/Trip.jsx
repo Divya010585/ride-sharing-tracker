@@ -42,6 +42,7 @@ const MapClickHandler = ({ onMapClick, settingMeetingPoint }) => {
 };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
+const API = 'https://ride-sharing-tracker-backend.onrender.com';
 
 const Trip = () => {
   const { roomCode } = useParams();
@@ -67,6 +68,7 @@ const Trip = () => {
   const [allETAs, setAllETAs] = useState({});
   const [activeReactionMsg, setActiveReactionMsg] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const lastMovementRef = useRef(Date.now());
   const countdownRef = useRef(null);
   const colorMapRef = useRef({});
@@ -86,7 +88,7 @@ const Trip = () => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    fetch(`https://ride-sharing-tracker-backend.onrender.com/api/trips/${roomCode}`, {
+    fetch(`${API}/api/trips/${roomCode}`, {
       headers: { authorization: token }
     })
       .then(res => res.json())
@@ -295,47 +297,68 @@ const Trip = () => {
     setNewMessage('');
   };
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Photo must be less than 2MB!');
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Photo must be less than 5MB!');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const res = await fetch(`${API}/api/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
       socket.emit('send-photo', {
         roomId: roomCode,
         userName: user?.name,
-        photoUrl: event.target.result,
+        photoUrl: data.photoUrl,
         type: 'photo'
       });
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      alert('Failed to upload photo!');
+    }
+    setUploading(false);
   };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 16000 };
+      try {
+        mediaRecorderRef.current = new MediaRecorder(stream, options);
+      } catch (e) {
+        mediaRecorderRef.current = new MediaRecorder(stream);
+      }
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e) => {
         audioChunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = () => {
+      mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onload = (event) => {
+        const formData = new FormData();
+        formData.append('photo', audioBlob, 'voice.webm');
+        try {
+          const res = await fetch(`${API}/api/upload`, {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
           socket.emit('send-photo', {
             roomId: roomCode,
             userName: user?.name,
-            photoUrl: event.target.result,
+            photoUrl: data.photoUrl,
             type: 'audio'
           });
-        };
-        reader.readAsDataURL(audioBlob);
+        } catch (err) {
+          alert('Failed to send voice message!');
+        }
       };
 
       mediaRecorderRef.current.start();
@@ -483,7 +506,7 @@ const Trip = () => {
                   >
                     {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
                     {msg.type === 'audio' ? (
-                     <audio controls style={styles.audioPlayer}><source src={msg.message} type="audio/webm" /></audio>
+                      <audio controls src={msg.message} style={styles.audioPlayer} />
                     ) : msg.type === 'photo' ? (
                       <img src={msg.message} alt="shared" style={styles.chatPhoto} />
                     ) : (
@@ -529,6 +552,12 @@ const Trip = () => {
               </div>
             )}
 
+            {uploading && (
+              <div style={styles.uploadingIndicator}>
+                ⏳ Uploading...
+              </div>
+            )}
+
             <div style={styles.chatInput}>
               <input
                 ref={fileInputRef}
@@ -537,8 +566,8 @@ const Trip = () => {
                 style={{ display: 'none' }}
                 onChange={handlePhotoUpload}
               />
-              <button style={styles.photoButton} onClick={() => fileInputRef.current.click()}>
-                📷
+              <button style={styles.photoButton} onClick={() => fileInputRef.current.click()} disabled={uploading}>
+                {uploading ? '⏳' : '📷'}
               </button>
               <button
                 style={isRecording ? styles.recordingButton : styles.voiceButton}
@@ -622,6 +651,7 @@ const styles = {
   reactionPickerLeft: { display: 'flex', gap: '8px', justifyContent: 'flex-start', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
   reactionOption: { fontSize: '20px', cursor: 'pointer' },
   recordingIndicator: { backgroundColor: '#ff0000', color: 'white', padding: '8px', textAlign: 'center', fontSize: '13px' },
+  uploadingIndicator: { backgroundColor: '#ff9800', color: 'white', padding: '8px', textAlign: 'center', fontSize: '13px' },
   chatInput: { padding: '15px', borderTop: '1px solid #0f3460', display: 'flex', gap: '10px' },
   photoButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
   voiceButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
