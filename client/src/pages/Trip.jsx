@@ -67,12 +67,15 @@ const Trip = () => {
   const [allETAs, setAllETAs] = useState({});
   const [activeReactionMsg, setActiveReactionMsg] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const lastMovementRef = useRef(Date.now());
   const countdownRef = useRef(null);
   const colorMapRef = useRef({});
   const colorIndexRef = useRef(0);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const getUserColor = (id) => {
     if (!colorMapRef.current[id]) {
@@ -261,7 +264,8 @@ const Trip = () => {
         etas[id] = { userName: loc.userName || 'Member', distance: km, minutes: mins };
       });
       setAllETAs(etas);
-    }  // eslint-disable-next-line react-hooks/exhaustive-deps
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myLocation, otherUsers, meetingPoint]);
 
   // Weather
@@ -307,11 +311,57 @@ const Trip = () => {
         body: formData
       });
       const data = await res.json();
-      socket.emit('send-photo', { roomId: roomCode, userName: user?.name, photoUrl: data.photoUrl });
+      socket.emit('send-photo', { roomId: roomCode, userName: user?.name, photoUrl: data.photoUrl, type: 'photo' });
     } catch (err) {
       alert('Failed to upload photo!');
     }
     setUploading(false);
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('photo', audioBlob, 'voice.webm');
+        try {
+          const res = await fetch('https://ride-sharing-tracker-backend.onrender.com/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          socket.emit('send-photo', {
+            roomId: roomCode,
+            userName: user?.name,
+            photoUrl: data.photoUrl,
+            type: 'audio'
+          });
+        } catch (err) {
+          alert('Failed to send voice message!');
+        }
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+    } catch (err) {
+      alert('Microphone permission denied!');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
+    }
   };
 
   const handleReaction = (msgId, emoji) => {
@@ -443,7 +493,9 @@ const Trip = () => {
                     onClick={() => !msg.isSystem && setActiveReactionMsg(activeReactionMsg === msg.msgId ? null : msg.msgId)}
                   >
                     {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
-                    {msg.type === 'photo' ? (
+                    {msg.type === 'audio' ? (
+                      <audio controls src={msg.message} style={styles.audioPlayer} />
+                    ) : msg.type === 'photo' ? (
                       <img src={msg.message} alt="shared" style={styles.chatPhoto} />
                     ) : (
                       <p style={styles.messageText}>{msg.message}</p>
@@ -458,7 +510,6 @@ const Trip = () => {
                     </div>
                   </div>
 
-                  {/* Reactions display */}
                   {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                     <div style={msg.id === socket.id ? styles.reactionsRight : styles.reactionsLeft}>
                       {Object.entries(msg.reactions).map(([emoji, users]) => (
@@ -469,7 +520,6 @@ const Trip = () => {
                     </div>
                   )}
 
-                  {/* Reaction picker */}
                   {activeReactionMsg === msg.msgId && (
                     <div style={msg.id === socket.id ? styles.reactionPickerRight : styles.reactionPickerLeft}>
                       {REACTIONS.map(emoji => (
@@ -483,6 +533,13 @@ const Trip = () => {
               ))}
               <div ref={messagesEndRef} />
             </div>
+
+            {isRecording && (
+              <div style={styles.recordingIndicator}>
+                🔴 Recording... Release to send
+              </div>
+            )}
+
             <div style={styles.chatInput}>
               <input
                 ref={fileInputRef}
@@ -493,6 +550,15 @@ const Trip = () => {
               />
               <button style={styles.photoButton} onClick={() => fileInputRef.current.click()} disabled={uploading}>
                 {uploading ? '⏳' : '📷'}
+              </button>
+              <button
+                style={isRecording ? styles.recordingButton : styles.voiceButton}
+                onMouseDown={startRecording}
+                onMouseUp={stopRecording}
+                onTouchStart={startRecording}
+                onTouchEnd={stopRecording}
+              >
+                {isRecording ? '⏹️' : '🎤'}
               </button>
               <input
                 style={styles.messageInput}
@@ -556,6 +622,7 @@ const styles = {
   messageName: { margin: '0 0 4px 0', color: '#aaa', fontSize: '11px', fontWeight: 'bold' },
   messageText: { margin: 0, color: 'white', fontSize: '14px' },
   chatPhoto: { maxWidth: '200px', maxHeight: '200px', borderRadius: '8px', cursor: 'pointer' },
+  audioPlayer: { width: '200px', height: '35px' },
   messageFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' },
   messageTime: { margin: 0, color: '#aaa', fontSize: '10px' },
   readReceipt: { color: '#aaa', fontSize: '11px' },
@@ -565,8 +632,11 @@ const styles = {
   reactionPickerRight: { display: 'flex', gap: '8px', justifyContent: 'flex-end', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
   reactionPickerLeft: { display: 'flex', gap: '8px', justifyContent: 'flex-start', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
   reactionOption: { fontSize: '20px', cursor: 'pointer' },
+  recordingIndicator: { backgroundColor: '#ff0000', color: 'white', padding: '8px', textAlign: 'center', fontSize: '13px' },
   chatInput: { padding: '15px', borderTop: '1px solid #0f3460', display: 'flex', gap: '10px' },
   photoButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
+  voiceButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
+  recordingButton: { padding: '10px', backgroundColor: '#ff0000', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
   messageInput: { flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #0f3460', backgroundColor: '#0f3460', color: 'white', fontSize: '14px', outline: 'none' },
   sendButton: { padding: '10px 16px', backgroundColor: '#e94560', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }
 };
