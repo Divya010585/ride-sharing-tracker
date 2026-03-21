@@ -1,9 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../App';
 
 const Navbar = () => {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user'));
+  const { theme, toggleTheme, colors } = useTheme();
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -12,20 +14,23 @@ const Navbar = () => {
   };
 
   return (
-    <nav style={styles.navbar}>
-      <div style={styles.logo} onClick={() => navigate('/dashboard')}>
+    <nav style={{ ...styles.navbar, backgroundColor: colors.navbar, boxShadow: `0 2px 10px rgba(0,0,0,0.1)` }}>
+      <div style={{ ...styles.logo, color: colors.accent }} onClick={() => navigate('/dashboard')}>
         🚗 RideTracker
       </div>
       {user && (
         <div style={styles.right}>
-          <div style={styles.avatar} onClick={() => navigate('/profile')}>
+          <div style={{ ...styles.avatar, backgroundColor: colors.accent }} onClick={() => navigate('/profile')}>
             {user.name.charAt(0).toUpperCase()}
           </div>
-          <span style={styles.username}>👋 {user.name}</span>
-          <button style={styles.profileBtn} onClick={() => navigate('/profile')}>
+          <span style={{ ...styles.username, color: colors.text }}>👋 {user.name}</span>
+          <button style={{ ...styles.themeBtn }} onClick={toggleTheme}>
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+          <button style={{ ...styles.profileBtn, backgroundColor: colors.cardSecondary, color: colors.text, border: `2px solid ${colors.accent}` }} onClick={() => navigate('/profile')}>
             👤 Profile
           </button>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
+          <button style={{ ...styles.logoutBtn, backgroundColor: colors.accent }} onClick={handleLogout}>
             Logout
           </button>
         </div>
@@ -36,15 +41,12 @@ const Navbar = () => {
 
 const styles = {
   navbar: {
-    backgroundColor: '#1a1a2e',
     padding: '15px 30px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.3)'
   },
   logo: {
-    color: '#e94560',
     fontSize: '22px',
     fontWeight: 'bold',
     cursor: 'pointer'
@@ -58,7 +60,6 @@ const styles = {
     width: '35px',
     height: '35px',
     borderRadius: '50%',
-    backgroundColor: '#e94560',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -68,21 +69,24 @@ const styles = {
     cursor: 'pointer'
   },
   username: {
-    color: 'white',
     fontSize: '14px'
+  },
+  themeBtn: {
+    padding: '6px 12px',
+    backgroundColor: 'transparent',
+    border: '2px solid #e94560',
+    borderRadius: '20px',
+    fontSize: '16px',
+    cursor: 'pointer'
   },
   profileBtn: {
     padding: '8px 16px',
-    backgroundColor: '#0f3460',
-    color: 'white',
-    border: '2px solid #e94560',
     borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '14px'
   },
   logoutBtn: {
     padding: '8px 16px',
-    backgroundColor: '#e94560',
     color: 'white',
     border: 'none',
     borderRadius: '6px',
