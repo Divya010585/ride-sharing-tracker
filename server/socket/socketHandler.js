@@ -29,7 +29,6 @@ module.exports = (io) => {
       });
     });
 
-    // Text message
     socket.on('send-message', (data) => {
       const msgId = Date.now().toString();
       io.to(data.roomId).emit('receive-message', {
@@ -43,7 +42,7 @@ module.exports = (io) => {
       });
     });
 
-    // Photo message
+    // Photo and Audio message - uses data.type
     socket.on('send-photo', (data) => {
       const msgId = Date.now().toString();
       io.to(data.roomId).emit('receive-message', {
@@ -51,13 +50,12 @@ module.exports = (io) => {
         msgId,
         userName: data.userName,
         message: data.photoUrl,
-        type: 'photo',
+        type: data.type || 'photo',
         time: new Date().toLocaleTimeString(),
         reactions: {}
       });
     });
 
-    // Message reaction
     socket.on('send-reaction', (data) => {
       io.to(data.roomId).emit('receive-reaction', {
         msgId: data.msgId,
@@ -66,7 +64,6 @@ module.exports = (io) => {
       });
     });
 
-    // Read receipt
     socket.on('message-read', (data) => {
       socket.to(data.roomId).emit('receive-read', {
         msgId: data.msgId,
