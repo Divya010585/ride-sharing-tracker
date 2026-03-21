@@ -75,8 +75,6 @@ const Trip = () => {
   const colorIndexRef = useRef(0);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
 
   const getUserColor = (id) => {
     if (!colorMapRef.current[id]) {
@@ -325,55 +323,32 @@ const Trip = () => {
     setUploading(false);
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 16000 };
-      try {
-        mediaRecorderRef.current = new MediaRecorder(stream, options);
-      } catch (e) {
-        mediaRecorderRef.current = new MediaRecorder(stream);
-      }
-      audioChunksRef.current = [];
-
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        audioChunksRef.current.push(e.data);
-      };
-
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('photo', audioBlob, 'voice.webm');
-        try {
-          const res = await fetch(`${API}/api/upload`, {
-            method: 'POST',
-            body: formData
-          });
-          const data = await res.json();
-          socket.emit('send-photo', {
-            roomId: roomCode,
-            userName: user?.name,
-            photoUrl: data.photoUrl,
-            type: 'audio'
-          });
-        } catch (err) {
-          alert('Failed to send voice message!');
-        }
-      };
-
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-    } catch (err) {
-      alert('Microphone permission denied!');
+  const startVoiceToText = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice to text not supported! Use Chrome browser.');
+      return;
     }
-  };
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onend = () => setIsRecording(false);
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      socket.emit('send-message', {
+        roomId: roomCode,
+        userName: user?.name,
+        message: `🎤 ${transcript}`
+      });
+    };
+    recognition.onerror = () => {
       setIsRecording(false);
-    }
+      alert('Voice recognition failed! Try again.');
+    };
+    recognition.start();
   };
 
   const handleReaction = (msgId, emoji) => {
@@ -505,9 +480,7 @@ const Trip = () => {
                     onClick={() => !msg.isSystem && setActiveReactionMsg(activeReactionMsg === msg.msgId ? null : msg.msgId)}
                   >
                     {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
-                    {msg.type === 'audio' ? (
-                      <audio controls src={msg.message} style={styles.audioPlayer} />
-                    ) : msg.type === 'photo' ? (
+                    {msg.type === 'photo' ? (
                       <img src={msg.message} alt="shared" style={styles.chatPhoto} />
                     ) : (
                       <p style={styles.messageText}>{msg.message}</p>
@@ -548,13 +521,13 @@ const Trip = () => {
 
             {isRecording && (
               <div style={styles.recordingIndicator}>
-                🔴 Recording... Release to send
+                🎤 Listening... Speak now!
               </div>
             )}
 
             {uploading && (
               <div style={styles.uploadingIndicator}>
-                ⏳ Uploading...
+                ⏳ Uploading photo...
               </div>
             )}
 
@@ -571,17 +544,14 @@ const Trip = () => {
               </button>
               <button
                 style={isRecording ? styles.recordingButton : styles.voiceButton}
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onTouchStart={startRecording}
-                onTouchEnd={stopRecording}
+                onClick={startVoiceToText}
               >
-                {isRecording ? '⏹️' : '🎤'}
+                {isRecording ? '🎤' : '🎤'}
               </button>
               <input
                 style={styles.messageInput}
                 type="text"
-                placeholder="Type a message..."
+                placeholder="Type or 🎤 speak..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
@@ -640,7 +610,6 @@ const styles = {
   messageName: { margin: '0 0 4px 0', color: '#aaa', fontSize: '11px', fontWeight: 'bold' },
   messageText: { margin: 0, color: 'white', fontSize: '14px' },
   chatPhoto: { maxWidth: '200px', maxHeight: '200px', borderRadius: '8px', cursor: 'pointer' },
-  audioPlayer: { width: '200px', height: '35px' },
   messageFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' },
   messageTime: { margin: 0, color: '#aaa', fontSize: '10px' },
   readReceipt: { color: '#aaa', fontSize: '11px' },
@@ -650,12 +619,12 @@ const styles = {
   reactionPickerRight: { display: 'flex', gap: '8px', justifyContent: 'flex-end', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
   reactionPickerLeft: { display: 'flex', gap: '8px', justifyContent: 'flex-start', backgroundColor: '#16213e', padding: '8px', borderRadius: '20px', marginTop: '4px' },
   reactionOption: { fontSize: '20px', cursor: 'pointer' },
-  recordingIndicator: { backgroundColor: '#ff0000', color: 'white', padding: '8px', textAlign: 'center', fontSize: '13px' },
+  recordingIndicator: { backgroundColor: '#4caf50', color: 'white', padding: '8px', textAlign: 'center', fontSize: '13px' },
   uploadingIndicator: { backgroundColor: '#ff9800', color: 'white', padding: '8px', textAlign: 'center', fontSize: '13px' },
   chatInput: { padding: '15px', borderTop: '1px solid #0f3460', display: 'flex', gap: '10px' },
   photoButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
   voiceButton: { padding: '10px', backgroundColor: '#0f3460', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
-  recordingButton: { padding: '10px', backgroundColor: '#ff0000', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
+  recordingButton: { padding: '10px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' },
   messageInput: { flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #0f3460', backgroundColor: '#0f3460', color: 'white', fontSize: '14px', outline: 'none' },
   sendButton: { padding: '10px 16px', backgroundColor: '#e94560', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }
 };
