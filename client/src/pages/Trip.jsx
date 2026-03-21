@@ -66,7 +66,6 @@ const Trip = () => {
   const [sosCountdown, setSosCountdown] = useState(30);
   const [allETAs, setAllETAs] = useState({});
   const [activeReactionMsg, setActiveReactionMsg] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const lastMovementRef = useRef(Date.now());
   const countdownRef = useRef(null);
@@ -214,7 +213,6 @@ const Trip = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, isGhost]);
 
-  // Auto SOS
   useEffect(() => {
     const movementInterval = setInterval(() => {
       const timeSinceMovement = Date.now() - lastMovementRef.current;
@@ -246,7 +244,6 @@ const Trip = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSosCountdown]);
 
-  // All ETAs
   useEffect(() => {
     if (meetingPoint) {
       const etas = {};
@@ -268,7 +265,6 @@ const Trip = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myLocation, otherUsers, meetingPoint]);
 
-  // Weather
   useEffect(() => {
     if (meetingPoint) {
       fetch(`https://wttr.in/${meetingPoint.lat},${meetingPoint.lng}?format=3`)
@@ -299,23 +295,23 @@ const Trip = () => {
     setNewMessage('');
   };
 
-  const handlePhotoUpload = async (e) => {
+  const handlePhotoUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('photo', file);
-      const res = await fetch('https://ride-sharing-tracker-backend.onrender.com/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      socket.emit('send-photo', { roomId: roomCode, userName: user?.name, photoUrl: data.photoUrl, type: 'photo' });
-    } catch (err) {
-      alert('Failed to upload photo!');
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Photo must be less than 2MB!');
+      return;
     }
-    setUploading(false);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      socket.emit('send-photo', {
+        roomId: roomCode,
+        userName: user?.name,
+        photoUrl: event.target.result,
+        type: 'photo'
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const startRecording = async () => {
@@ -328,25 +324,18 @@ const Trip = () => {
         audioChunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = async () => {
+      mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('photo', audioBlob, 'voice.webm');
-        try {
-          const res = await fetch('https://ride-sharing-tracker-backend.onrender.com/api/upload', {
-            method: 'POST',
-            body: formData
-          });
-          const data = await res.json();
+        const reader = new FileReader();
+        reader.onload = (event) => {
           socket.emit('send-photo', {
             roomId: roomCode,
             userName: user?.name,
-            photoUrl: data.photoUrl,
+            photoUrl: event.target.result,
             type: 'audio'
           });
-        } catch (err) {
-          alert('Failed to send voice message!');
-        }
+        };
+        reader.readAsDataURL(audioBlob);
       };
 
       mediaRecorderRef.current.start();
@@ -548,8 +537,8 @@ const Trip = () => {
                 style={{ display: 'none' }}
                 onChange={handlePhotoUpload}
               />
-              <button style={styles.photoButton} onClick={() => fileInputRef.current.click()} disabled={uploading}>
-                {uploading ? '⏳' : '📷'}
+              <button style={styles.photoButton} onClick={() => fileInputRef.current.click()}>
+                📷
               </button>
               <button
                 style={isRecording ? styles.recordingButton : styles.voiceButton}
