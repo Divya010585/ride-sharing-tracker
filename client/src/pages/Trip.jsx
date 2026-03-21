@@ -68,8 +68,9 @@ const Trip = () => {
   const [allETAs, setAllETAs] = useState({});
   const [activeReactionMsg, setActiveReactionMsg] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const lastMovementRef = useRef(Date.now());
+  const [mySpeed, setMySpeed] = useState(0);
+  const speedKmh = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0;
+  setMySpeed(speedKmh);
   const countdownRef = useRef(null);
   const colorMapRef = useRef({});
   const colorIndexRef = useRef(0);
@@ -385,7 +386,7 @@ const Trip = () => {
             Room Code: <strong>{roomCode}</strong>
             <button style={styles.copyButton} onClick={handleCopyCode}>📋 Copy</button>
           </p>
-          <p style={styles.status}>🟢 Connected · 👥 {participantCount} participant(s)</p>
+         <p style={styles.status}>🟢 Connected · 👥 {participantCount} participant(s) · 🚗 {mySpeed} km/h</p>
         </div>
         <div style={styles.buttons}>
           <button style={settingMeetingPoint ? styles.etaButtonOn : styles.etaButtonOff} onClick={() => setSettingMeetingPoint(!settingMeetingPoint)}>
