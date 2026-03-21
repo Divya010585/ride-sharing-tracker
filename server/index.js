@@ -15,7 +15,8 @@ const io = socketio(server, {
   cors: {
     origin: ['http://localhost:3000', 'https://ride-sharing-tracker.vercel.app'],
     methods: ['GET', 'POST']
-  }
+  },
+  maxHttpBufferSize: 10e6
 });
 
 app.use(express.json());
