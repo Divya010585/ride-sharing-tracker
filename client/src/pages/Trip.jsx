@@ -483,7 +483,7 @@ const Trip = () => {
                   >
                     {!msg.isSystem && <p style={styles.messageName}>{msg.userName}</p>}
                     {msg.type === 'audio' ? (
-                      <audio controls src={msg.message} style={styles.audioPlayer} />
+                     <audio controls style={styles.audioPlayer}><source src={msg.message} type="audio/webm" /></audio>
                     ) : msg.type === 'photo' ? (
                       <img src={msg.message} alt="shared" style={styles.chatPhoto} />
                     ) : (
